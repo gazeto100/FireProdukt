@@ -12,6 +12,10 @@ if (isset($statuses[$status])) {
     $where[] = 'i.status = ?';
     $params[] = $status;
 }
+if (in_array($_GET['kind'] ?? '', ['config', 'project'], true)) {
+    $where[] = 'i.kind = ?';
+    $params[] = $_GET['kind'];
+}
 if (($_GET['anon'] ?? '') === '1') {
     $where[] = 'i.anonymized_at IS NOT NULL';
 } elseif (($_GET['anon'] ?? '') !== 'all') {
@@ -40,17 +44,23 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="' . $fname . '"');
 $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF");
-$head = ['Номер', 'Дата', 'Статус', 'Име', 'Телефон', 'Имейл', 'Населено място', 'Бележка на клиента', 'Модел', 'Размери (см)', 'Материал', 'Крачета',
+$head = ['Номер', 'Вид', 'Дата', 'Статус', 'Име', 'Телефон', 'Имейл', 'Населено място', 'Бележка на клиента', 'Модел', 'Размери (см)', 'Материал', 'Крачета',
     'Надпис', 'Знаци', 'Шрифт', 'Височина на буквите (мм)', 'Страни', 'Орнамент', 'Екстри', 'Количество', 'Цена от', 'Цена до', 'Тегло (кг/бр.)',
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано'];
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано', 'Обект (проект)', 'Срок (проект)', 'Интересуват ме (проект)', 'Лого (проект)'];
 fwrite($out, implode(';', array_map('csv_cell', $head)) . "\r\n");
 foreach ($rows as $r) {
     $c = json_decode($r['config_json'], true) ?: [];
     $o = $c['options'] ?? [];
     $m = $c['model'] ?? [];
     $dims = $m ? (($m['shape'] ?? '') === 'hex' ? 'Ø' . fmt_num($m['w']) . ' × ' . fmt_num($m['h']) : fmt_num($m['w']) . ' × ' . fmt_num($m['d']) . ' × ' . fmt_num($m['h'])) : '';
+    $isP = $r['kind'] === 'project';
+    if ($isP) {
+        $m = ['name' => 'Проект'];
+        $dims = '';
+        $o = ['material' => ['name' => project_materials_short()[$c['material'] ?? ''] ?? '']];
+    }
     $line = [
-        $r['public_code'], date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
+        $r['public_code'], $isP ? 'Проект' : 'Конфигуратор', date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
         $r['name'], $r['phone'], $r['email'], $r['city'], $r['note'],
         $m['name'] ?? '', $dims, $o['material']['name'] ?? '', $o['legs']['name'] ?? '',
         $c['text'] ?? '', $c['text_length'] ?? '', ($c['text_length'] ?? 0) ? ($o['font']['name'] ?? '') : '', dec($c['letter_mm'] ?? null),
@@ -58,6 +68,8 @@ foreach ($rows as $r) {
         implode(', ', array_column($o['extras'] ?? [], 'name')), $r['quantity'], dec($r['price_min']), dec($r['price_max']), dec($r['weight_kg']),
         $r['utm_source'], $r['utm_medium'], $r['utm_campaign'], $r['utm_term'], $r['utm_content'], $r['referrer'], $r['notes'],
         $r['anonymized_at'] ? date('d.m.Y', strtotime($r['anonymized_at'])) : '',
+        $isP ? ($c['object'] ?? '') : '', $isP ? (project_deadlines()[$c['deadline'] ?? ''] ?? '') : '',
+        $isP ? implode(', ', array_column($c['interests'] ?? [], 'name')) : '', $isP ? ($c['logo'] ?? '') : '',
     ];
     fwrite($out, implode(';', array_map('csv_cell', $line)) . "\r\n");
 }

@@ -69,6 +69,7 @@ $reasons = rejected_reasons();
 $rej = db_all('SELECT reason, SUM(cnt) c FROM rejected_log WHERE day >= ? GROUP BY reason ORDER BY c DESC', [$from]);
 $rejDays = db_all('SELECT day, reason, cnt FROM rejected_log WHERE day >= ? ORDER BY day DESC, reason LIMIT 200', [$from]);
 
+$projects = (int)db_one("SELECT COUNT(*) c FROM inquiries WHERE kind = 'project' AND created_at >= ?", [$from])['c'];
 $pct = fn($a, $b) => $b ? number_format($a / $b * 100, 1, ',', '') . '%' : '—';
 
 admin_header('Статистика', 'stats');
@@ -85,7 +86,7 @@ admin_header('Статистика', 'stats');
 <div class="kpis">
   <div class="kpi"><b><?= $tot['v'] ?></b><span>посещения на конфигуратора (уникални сесии)</span></div>
   <div class="kpi"><b><?= $tot['txt'] ?></b><span>въвели надпис (<?= $pct($tot['txt'], $tot['v']) ?>)</span></div>
-  <div class="kpi"><b><?= $tot['lead'] ?></b><span>запитвания (<?= $pct($tot['lead'], $tot['v']) ?> от посещенията)</span></div>
+  <div class="kpi"><b><?= $tot['lead'] ?></b><span>запитвания (<?= $pct($tot['lead'], $tot['v']) ?> от посещенията)<?= $projects ? ', от тях ' . $projects . ' по проект' : '' ?></span></div>
   <div class="kpi"><b><?= $tot['rej'] ?></b><span>отхвърлени запитвания</span></div>
 </div>
 

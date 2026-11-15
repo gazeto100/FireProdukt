@@ -66,6 +66,14 @@ page_header('', [
     </ol>
     <p class="center"><a class="btn btn-lg" href="<?= e(url('configurator.php')) ?>">Сглоби своя модел</a></p>
   </section>
+
+  <section class="wrap">
+    <div class="promo-projects">
+      <h2>За хотели, ресторанти и къщи за гости</h2>
+      <p>Големи купи, огнища маси, пейки около огъня и колони с вашето лого – по проект.</p>
+      <a class="btn" href="<?= e(url('za-hoteli.php')) ?>">Вижте моделите за обекти</a>
+    </div>
+  </section>
 </main>
 <script>window.FP_CATALOG = <?= json_encode($cat, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;</script>
 <?php page_footer(['scripts' => ['js/geometry.js', 'js/render.js', 'js/home.js']]); ?>

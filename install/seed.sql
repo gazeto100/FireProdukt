@@ -16,7 +16,7 @@ INSERT INTO settings (k, v) VALUES
  ('smtp_secure', 'tls'),
  ('smtp_user', ''),
  ('smtp_pass', ''),
- ('schema_version', '2')
+ ('schema_version', '3')
 ON DUPLICATE KEY UPDATE k = k;
 
 INSERT INTO product_types (code, name, hint, sort) VALUES

@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS model_options (
 CREATE TABLE IF NOT EXISTS inquiries (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   public_code VARCHAR(16) NOT NULL UNIQUE,
+  kind VARCHAR(16) NOT NULL DEFAULT 'config',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   status VARCHAR(16) NOT NULL DEFAULT 'new',
   name VARCHAR(100) NOT NULL,
@@ -119,6 +120,7 @@ CREATE TABLE IF NOT EXISTS inquiries (
   user_agent VARCHAR(255) NULL,
   anonymized_at DATETIME NULL,
   KEY idx_status (status),
+  KEY idx_kind (kind),
   KEY idx_created (created_at),
   KEY idx_ip_time (ip_hash, created_at),
   CONSTRAINT fk_inq_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE SET NULL
@@ -132,6 +134,20 @@ CREATE TABLE IF NOT EXISTS inquiry_notes (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_inq (inquiry_id),
   CONSTRAINT fk_notes_inq FOREIGN KEY (inquiry_id) REFERENCES inquiries(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Качени файлове (лого към запитване по проект). Самите файлове са извън публичната папка.
+CREATE TABLE IF NOT EXISTS uploads (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  inquiry_id INT UNSIGNED NOT NULL,
+  stored_name VARCHAR(64) NOT NULL,
+  original_name VARCHAR(190) NOT NULL,
+  mime VARCHAR(64) NOT NULL,
+  ext VARCHAR(8) NOT NULL,
+  size INT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_inq (inquiry_id),
+  CONSTRAINT fk_upl_inq FOREIGN KEY (inquiry_id) REFERENCES inquiries(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Дневник на изпратените имейли (успешни и неуспешни)

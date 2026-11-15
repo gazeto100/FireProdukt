@@ -144,6 +144,9 @@ function validate_config(array $in, array $cat): array
 /** Четим списък на конфигурацията за имейли и админа */
 function config_lines(array $cfg, array $cat): array
 {
+    if (($cfg['kind'] ?? '') === 'project') {
+        return project_lines($cfg);
+    }
     $groupNames = [];
     foreach ($cat['groups'] as $g) {
         $groupNames[$g['code']] = $g['name'];

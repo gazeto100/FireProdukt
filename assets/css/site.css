@@ -268,3 +268,34 @@ h1, h2, h3 { font-family: var(--head); font-weight: 400; line-height: 1.2; margi
 
 /* атрибутът hidden винаги скрива, независимо от display на класа */
 [hidden] { display: none !important; }
+
+/* ---------- За хотели и къщи за гости ---------- */
+.hero-projects { padding: 28px 0 32px; }
+.hero-projects h1 { max-width: 760px; }
+.hero-projects .lead { max-width: 680px; }
+.gallery-big .g-img { height: 260px; }
+.g-static { cursor: default; }
+.g-static:hover { transform: none; }
+.g-desc { color: var(--ink-2); font-size: .9rem; margin-top: 4px; }
+.project-form-sec { padding-bottom: 12px; }
+.card-form { background: var(--surface); border-radius: var(--radius); padding: 18px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.card-form fieldset { border: 0; padding: 0; margin: 0 0 14px; }
+.card-form legend { font-weight: 600; font-size: .95rem; margin-bottom: 8px; padding: 0; }
+.card-form select { width: 100%; padding: 13px 14px; border: 2px solid var(--line); border-radius: 12px; background: #fff; font: inherit; font-size: 16px; color: var(--ink); }
+.card-form input[type=file] { width: 100%; padding: 12px; border: 2px dashed var(--line); border-radius: 12px; background: var(--bg); font: inherit; }
+.form-sub { font-size: 1.05rem; margin: 18px 0 10px; }
+.two-col { display: grid; grid-template-columns: 1fr; gap: 0 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.chip span { display: inline-block; padding: 9px 14px; border: 2px solid var(--line); border-radius: 999px; background: #fff; font-size: .9rem; }
+.chip input:checked + span { border-color: var(--ember); background: #fff4ec; }
+.chip input:focus-visible + span { outline: 3px solid #1a73e8; outline-offset: 2px; }
+.sw-corten { background: linear-gradient(135deg, #c27a48, #8a4520 55%, #5c2d15); }
+.mat-opts .opt-in { min-height: 64px; }
+.promo-projects { margin-top: 28px; background: var(--stage); color: #eee4d9; border-radius: var(--radius); padding: 22px 18px; }
+.promo-projects h2 { color: #fff; font-size: 1.3rem; }
+.promo-projects p { color: #cfc4b8; margin: 0 0 14px; }
+@media (min-width: 700px) { .two-col { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 900px) { .gallery-big { grid-template-columns: repeat(3, 1fr); } .card-form { padding: 26px 28px; } }
+.g-note { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: #fff1e6; color: #b04a00; font-size: .8rem; font-weight: 700; align-self: flex-start; }

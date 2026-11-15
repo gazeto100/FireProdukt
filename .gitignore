@@ -1,0 +1,20 @@
+# Създават се от инсталатора на всеки сървър – не се пазят в хранилището
+config/config.php
+config/installed.lock
+
+# Локални тестови данни (напр. config/dev-admin.local.txt)
+*.local.*
+
+# Готови архиви за качване
+dist/
+
+# Качени файлове, ако папката за качване е в проекта (резервен вариант)
+storage/
+fireprodukt_uploads/
+
+# Логове и системни файлове
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -102,3 +102,12 @@ details summary { cursor: pointer; padding: 4px 0; }
 
 /* атрибутът hidden винаги скрива, независимо от display на класа */
 [hidden] { display: none !important; }
+/* Запитвания по проект */
+.badge-project { background: #1f1a16; color: #ffb47a; }
+.row-project { border-left: 4px solid #e2620c; }
+.kind-tabs a { font-weight: 600; }
+.logo-box { display: flex; gap: 14px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f0ebe5; margin-bottom: 10px; }
+.logo-prev { flex: none; width: 120px; height: 90px; border-radius: 8px; background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); }
+.logo-prev img { max-width: 100%; max-height: 100%; }
+.logo-file { background: #f3eee8; font-weight: 700; color: var(--ink2); }
+.logo-box .a-btn { margin-top: 6px; }

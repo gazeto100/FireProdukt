@@ -113,6 +113,15 @@ admin_header('Настройки', 'settings');
   </section>
 
   <section class="card">
+    <h2>Качени лога</h2>
+    <?php $ud = upload_dir(); $pub = upload_dir_is_public($ud); $ready = upload_dir_ready(); ?>
+    <p class="small">Папка: <code><?= e($ud) ?></code></p>
+    <p class="small"><?= $ready ? '✓ Има права за запис.' : '<span class="warn">✗ Няма права за запис – логата няма да се записват.</span>' ?>
+      <?= $pub ? '<br><span class="warn">⚠ Папката е в публичната директория (защитена само с .htaccess). Задайте upload_dir извън public_html в config/config.php.</span>' : '<br>✓ Извън публичната папка.' ?></p>
+    <p class="muted small">Лимит на сървъра за качване: <?= e(ini_get('upload_max_filesize')) ?> (нужни са поне 5 MB).</p>
+  </section>
+
+  <section class="card">
     <h2>Проследяване</h2>
     <p class="muted small">Зареждат се само ако са попълнени и посетителят е приел бисквитките.</p>
     <label>Meta Pixel ID<input name="meta_pixel_id" value="<?= $v('meta_pixel_id') ?>" inputmode="numeric"></label>

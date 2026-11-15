@@ -33,11 +33,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cfg['text'] = '';
             $cfg['text_removed'] = true;
         }
+        if (($cfg['kind'] ?? '') === 'project') {
+            // обектът и името на файла също се махат; остават брой, материал, срок и интерес за статистиката
+            if (($cfg['object'] ?? '') !== '') { $cfg['object'] = ''; $cfg['object_removed'] = true; }
+            if (($cfg['logo'] ?? '') !== '') { $cfg['logo'] = '(изтрито)'; }
+        }
         db()->beginTransaction();
         db()->prepare("UPDATE inquiries SET name = '', phone = '', email = NULL, city = NULL, note = NULL, svg = NULL, ip_hash = NULL,
             user_agent = NULL, referrer = NULL, landing_url = NULL, config_json = ?, anonymized_at = NOW() WHERE id = ?")
             ->execute([json_encode($cfg, JSON_UNESCAPED_UNICODE), $id]);
         db()->prepare('DELETE FROM inquiry_notes WHERE inquiry_id = ?')->execute([$id]);
+        upload_delete_for_inquiry($id);
         db()->prepare("UPDATE mail_log SET recipient = '(изтрит)', subject = '(изтрито)', error = NULL WHERE inquiry_id = ?")->execute([$id]);
         db()->commit();
         flash('Личните данни по запитване ' . $inq['public_code'] . ' са изтрити. Остава анонимен запис за статистиката.');
@@ -53,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $t .= "$k: $v\n";
             }
             $t .= "\nДетайли: " . abs_url('admin/inquiry.php?id=' . $id) . "\n";
-            $ok = send_mail($notify, "Запитване {$inq['public_code']} – {$cfg['model']['name']} ({$inq['name']})", $t, null, [], $id);
+            $ok = send_mail($notify, "Запитване {$inq['public_code']} – " . (($cfg['kind'] ?? '') === 'project' ? 'Проект: ' . ($cfg['object'] ?? '') : ($cfg['model']['name'] ?? '')) . " ({$inq['name']})", $t, null, [], $id);
             flash($ok ? 'Известието е изпратено.' : 'Изпращането не успя – вижте дневника по-долу.', $ok ? 'ok' : 'err');
         }
     }
@@ -65,18 +71,37 @@ $lines = config_lines($cfg, load_catalog(false));
 $notes = db_all('SELECT n.*, a.username FROM inquiry_notes n LEFT JOIN admins a ON a.id = n.admin_id WHERE n.inquiry_id = ? ORDER BY n.id DESC', [$id]);
 $mails = db_all('SELECT * FROM mail_log WHERE inquiry_id = ? ORDER BY id', [$id]);
 $tel = preg_replace('/[^\d+]/', '', $inq['phone']);
+$isProj = $inq['kind'] === 'project';
+$files = db_all('SELECT * FROM uploads WHERE inquiry_id = ? ORDER BY id', [$id]);
 
 admin_header('Запитване ' . $inq['public_code'], 'inquiries');
 ?>
 <p><a href="inquiries.php">← Всички запитвания</a></p>
 <div class="a-title">
-  <h1><?= e($inq['public_code']) ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
+  <h1><?= e($inq['public_code']) ?> <?= $isProj ? '<span class="badge badge-project">Проект</span>' : '' ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
   <span class="muted"><?= e(date('d.m.Y H:i', strtotime($inq['created_at']))) ?></span>
 </div>
 
 <div class="grid2">
   <section class="card">
-    <?php if ($inq['svg']): ?>
+    <?php if ($isProj): ?>
+      <h2>Запитване по проект</h2>
+      <?php foreach ($files as $fl): ?>
+        <div class="logo-box">
+          <?php if (in_array($fl['ext'], ['png', 'jpg'], true)): ?>
+            <div class="logo-prev"><img src="upload.php?id=<?= (int)$fl['id'] ?>&amp;inline=1" alt="Лого"></div>
+          <?php else: ?>
+            <div class="logo-prev logo-file"><?= e(strtoupper($fl['ext'])) ?></div>
+          <?php endif; ?>
+          <div>
+            <b><?= e($fl['original_name']) ?></b><br><span class="muted small"><?= e(strtoupper($fl['ext'])) ?> · <?= e(fmt_bytes((int)$fl['size'])) ?></span><br>
+            <a class="a-btn a-btn-ghost" href="upload.php?id=<?= (int)$fl['id'] ?>">⇩ Свали логото</a>
+            <?php if ($fl['ext'] === 'svg'): ?><p class="muted small">SVG файловете се свалят и не се отварят в браузъра (сигурност). Отворете го в Illustrator/Inkscape.</p><?php endif; ?>
+          </div>
+        </div>
+      <?php endforeach; ?>
+      <?php if (!$files): ?><p class="muted small">Без качено лого.</p><?php endif; ?>
+    <?php elseif ($inq['svg']): ?>
       <div class="preview"><img src="svg.php?id=<?= (int)$id ?>" alt="Преглед"></div>
     <?php else: ?>
       <p class="muted">Няма запазен преглед.</p>
@@ -85,14 +110,14 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
       <?php foreach ($lines as $k => $v): ?>
         <tr><th><?= e($k) ?></th><td><?= e($v) ?></td></tr>
       <?php endforeach; ?>
-      <tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b></td></tr>
+      <?php if (!$isProj): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b></td></tr><?php endif; ?>
     </table>
     <details><summary>Конфигурация (JSON)</summary><pre><?= e(json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre></details>
   </section>
 
   <div>
     <section class="card">
-      <h2>Клиент</h2>
+      <h2><?= $isProj ? 'Лице за контакт' : 'Клиент' ?></h2>
       <table class="kv">
         <tr><th>Име</th><td><?= e($inq['name']) ?></td></tr>
         <tr><th>Телефон</th><td><a href="tel:<?= e($tel) ?>"><?= e($inq['phone']) ?></a></td></tr>
@@ -164,7 +189,7 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
     <form method="post" class="card" id="delForm">
       <?= csrf_field() ?><input type="hidden" name="action" value="anonymize">
       <h2>Изтриване</h2>
-      <p class="muted small">Изтрива име, телефон, имейл, населено място, бележки, надписа, прегледа (SVG) и техническите данни. Остава анонимен ред (модел, опции, цена, източник, статус) за статистиката. Не може да се отмени.</p>
+      <p class="muted small">Изтрива име, телефон, имейл, населено място, бележки, надписа/обекта, прегледа (SVG), каченото лого и техническите данни. Остава анонимен ред (модел, опции, цена, източник, статус) за статистиката. Не може да се отмени.</p>
       <button class="a-btn a-btn-danger">Изтрий запитването</button>
     </form>
     <script>

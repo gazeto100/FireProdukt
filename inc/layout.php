@@ -47,7 +47,7 @@ function page_footer(array $o = []): void
   <div class="wrap">
     <p><strong><?= e($site) ?></strong> · Огнища и скари от неръждаема стомана, изработени в България.</p>
     <?php if ($phone !== ''): ?><p>Телефон: <a href="tel:<?= e(preg_replace('/[^\d+]/', '', $phone)) ?>"><?= e($phone) ?></a></p><?php endif; ?>
-    <p class="footer-links"><a href="<?= e(url('terms.php')) ?>">Общи условия</a> · <a href="<?= e(url('privacy.php')) ?>">Поверителност</a><?php if ($tracking): ?> · <button type="button" class="link-btn" data-cookie-settings>Бисквитки</button><?php endif; ?></p>
+    <p class="footer-links"><a href="<?= e(url('za-hoteli.php')) ?>">За хотели и къщи за гости</a> · <a href="<?= e(url('terms.php')) ?>">Общи условия</a> · <a href="<?= e(url('privacy.php')) ?>">Поверителност</a><?php if ($tracking): ?> · <button type="button" class="link-btn" data-cookie-settings>Бисквитки</button><?php endif; ?></p>
   </div>
 </footer>
 <?php if ($tracking): ?>
