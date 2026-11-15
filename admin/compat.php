@@ -125,9 +125,9 @@ admin_header('Съвместимост', 'compat');
           <td><?= e($o['name']) ?><?= $o['active'] ? '' : ' <span class="badge">скрита</span>' ?></td>
           <td class="nowrap muted small"><?= e($priceTxt($o)) ?></td>
           <td class="nowrap">
-            <input class="num" name="pmin_<?= $oid ?>" inputmode="decimal" value="<?= $r && $r['price_min'] !== null ? e(fmt_num($r['price_min'])) : '' ?>" placeholder="<?= e(fmt_num($o['price_min'])) ?>" aria-label="Цена от">
+            <input class="num" name="pmin_<?= $oid ?>" inputmode="decimal" value="<?= $r && $r['price_min'] !== null ? e(fmt_input($r['price_min'])) : '' ?>" placeholder="<?= e(fmt_num($o['price_min'])) ?>" aria-label="Цена от">
             –
-            <input class="num" name="pmax_<?= $oid ?>" inputmode="decimal" value="<?= $r && $r['price_max'] !== null ? e(fmt_num($r['price_max'])) : '' ?>" placeholder="<?= e(fmt_num($o['price_max'])) ?>" aria-label="Цена до">
+            <input class="num" name="pmax_<?= $oid ?>" inputmode="decimal" value="<?= $r && $r['price_max'] !== null ? e(fmt_input($r['price_max'])) : '' ?>" placeholder="<?= e(fmt_num($o['price_max'])) ?>" aria-label="Цена до">
           </td>
         </tr>
       <?php endforeach; ?>

@@ -171,7 +171,82 @@
     return { kg: Math.round((area * t * dens + extra) * 10) / 10, area_m2: area };
   }
 
+  /* ---------- Размер по избор (огледало на custom_dims_check / sheet_fit / calc_price_custom в PHP) ---------- */
+
+  /**
+   * Връща стойността към най-близката допустима (стъпка, мин./макс., отношение височина/ширина).
+   * lim = form.custom; dims = {w, d, h}. Връща {dims, messages}.
+   */
+  function clampCustom(lim, dims) {
+    var out = { w: dims.w, d: dims.d, h: dims.h }, msgs = [], step = lim.step;
+    var label = { w: lim.mode === 'dh' ? 'Диаметърът' : 'Ширината', d: 'Дълбочината', h: 'Височината' };
+    var keys = lim.mode === 'wdh' ? ['w', 'd', 'h'] : ['w', 'h'];
+    keys.forEach(function (k) {
+      var v = parseFloat(String(out[k]).replace(',', '.'));
+      if (isNaN(v)) v = lim[k + '_min'];
+      var r = lim[k + '_min'] + Math.round((v - lim[k + '_min']) / step) * step;
+      if (r < lim[k + '_min']) { r = lim[k + '_min']; msgs.push(label[k] + ' е върната до минимума ' + fmt(r) + ' см.'); }
+      else if (r > lim[k + '_max']) { r = lim[k + '_max']; msgs.push(label[k] + ' е върната до максимума ' + fmt(r) + ' см.'); }
+      else if (Math.abs(r - v) > 0.01) { msgs.push(label[k] + ' е закръглена до ' + fmt(r) + ' см (стъпка ' + fmt(step) + ' см).'); }
+      out[k] = Math.round(r * 10) / 10;
+    });
+    if (lim.mode !== 'wdh') out.d = out.w;
+    var hMax = Math.floor((lim.max_h_ratio * out.w - lim.h_min) / step + 1e-9) * step + lim.h_min;
+    if (out.h > hMax + 0.01) {
+      out.h = Math.max(lim.h_min, hMax);
+      msgs.push('Височината е намалена до ' + fmt(out.h) + ' см – може да е най-много ' + fmt(lim.max_h_ratio) + ' от ширината.');
+    }
+    return { dims: out, messages: msgs };
+  }
+
+  /** Побиране на плоските детайли в листа; S = settings (sheet_w_mm, sheet_h_mm). Връща {fits, part} */
+  function sheetFit(m, S) {
+    var L = Math.max(S.sheet_w_mm, S.sheet_h_mm), Sh = Math.min(S.sheet_w_mm, S.sheet_h_mm);
+    var fits = function (a, b) { return (a <= L && b <= Sh) || (a <= Sh && b <= L); };
+    var w = m.w * 10, d = m.d * 10, h = m.h * 10, mm = function (v) { return Math.round(v); };
+    if (m.shape === 'hex' || m.shape === 'octagon') {
+      var side = m.shape === 'hex' ? w / 2 : w * Math.sin(Math.PI / 8);
+      if (!fits(side, h)) return { fits: false, part: 'стена ' + mm(side) + '×' + mm(h) + ' мм' };
+      if (!fits(w, w)) return { fits: false, part: 'дъно Ø' + mm(w) + ' мм' };
+      return { fits: true, part: '' };
+    }
+    if (m.shape === 'cross') return fits(w, h) ? { fits: true, part: '' } : { fits: false, part: 'плоча ' + mm(w) + '×' + mm(h) + ' мм' };
+    if (m.shape === 'ringbowl') {
+      var circ = Math.PI * 0.72 * w;
+      if (circ > L) return { fits: false, part: 'пръстен с обиколка ' + mm(circ) + ' мм' };
+      if (w > Sh) return { fits: false, part: 'купа Ø' + mm(w) + ' мм' };
+      return { fits: true, part: '' };
+    }
+    var wallW = m.shape === 'trapezoid' ? w + 2 * 0.22 * h : w, parts = [[wallW, h, 'стена'], [d, h, 'стена'], [w, d, 'дъно']];
+    for (var i = 0; i < parts.length; i++) {
+      if (!fits(parts[i][0], parts[i][1])) return { fits: false, part: parts[i][2] + ' ' + mm(parts[i][0]) + '×' + mm(parts[i][1]) + ' мм' };
+    }
+    if (w + 2 * h > Sh || d > L) return { fits: false, part: 'разгъната заготовка ' + mm(w + 2 * h) + ' мм (листът е ' + mm(Sh) + ' мм)' };
+    return { fits: true, part: '' };
+  }
+
+  /** (площ × цена на m² за материала + фиксирана сума) × (1 + надценка %) + опциите; закръгляне до 5, после × брой */
+  function calcPriceCustom(model, lim, sel, decoratedCount, isDecorated, qty, S) {
+    if (lim.fixed === undefined || S.custom_surcharge_pct === undefined) return null; // цените са изключени
+    var area = sheetArea(Object.assign({}, model, { sheet_area_m2: null })), m2min = 0, m2max = 0, aMin = 0, aMax = 0;
+    sel.forEach(function (s) {
+      var o = s.opt;
+      if (o.group === 'material') { m2min = o.price_m2_min || 0; m2max = o.price_m2_max || 0; return; }
+      if (o.price_type === 'factor') return;
+      if (o.group === 'sides' && !isDecorated) return;
+      var mult = o.render && o.render.per_side ? decoratedCount : 1;
+      aMin += (s.mo.price_min || 0) * mult; aMax += (s.mo.price_max || 0) * mult;
+    });
+    var k = 1 + S.custom_surcharge_pct / 100;
+    var uMin = Math.floor(((area * m2min + lim.fixed) * k + aMin) / 5) * 5;
+    var uMax = Math.ceil(((area * m2max + lim.fixed) * k + aMax) / 5) * 5;
+    return { unit_min: uMin, unit_max: uMax, min: uMin * qty, max: uMax * qty };
+  }
+
   global.FPGeo = {
+    clampCustom: clampCustom,
+    sheetFit: sheetFit,
+    calcPriceCustom: calcPriceCustom,
     chars: chars,
     textLines: textLines,
     normalizeText: normalizeText,

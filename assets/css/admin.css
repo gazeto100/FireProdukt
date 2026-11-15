@@ -104,6 +104,14 @@ details summary { cursor: pointer; padding: 4px 0; }
 [hidden] { display: none !important; }
 /* Запитвания по проект */
 .badge-project { background: #1f1a16; color: #ffb47a; }
+.badge-custom { background: #fff0e3; color: #a04400; border: 1px solid #f3c39b; }
+.badge-flag { background: #fdecec; color: #9b2020; }
+.custom-lim { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.custom-lim summary { cursor: pointer; }
+.custom-lim .inline label.lim { flex: 0 0 auto; min-width: 0; }
+.custom-lim .inline label.lim1 { flex: 0 0 150px; min-width: 0; }
+.custom-lim .pair { display: flex; gap: 6px; align-items: center; }
+.custom-lim .pair input { width: 80px; }
 .row-project { border-left: 4px solid #e2620c; }
 .kind-tabs a { font-weight: 600; }
 .logo-box { display: flex; gap: 14px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f0ebe5; margin-bottom: 10px; }

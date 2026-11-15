@@ -234,3 +234,94 @@ function sheet_area_m2(array $m): float
             return ($w * $d + 2 * ($w + $d) * $h) / 10000;
     }
 }
+
+/* ---------- Размер по избор (етап 3, част В) ---------- */
+
+/** Какви полета има формата: dh – диаметър и височина; wh – квадрат (ширина = дълбочина); wdh – ширина, дълбочина, височина */
+function form_dims_mode(string $shape, array $models): string
+{
+    if (in_array($shape, ['hex', 'octagon', 'cross', 'ringbowl'], true)) {
+        return 'dh';
+    }
+    foreach ($models as $m) {
+        if (abs($m['w'] - $m['d']) > 0.01) {
+            return 'wdh';
+        }
+    }
+    return 'wh';
+}
+
+/**
+ * Проверява размер по избор спрямо границите на формата.
+ * Връща ['dims' => [w, d, h], 'errors' => [...]] – грешка за всяка стойност извън границите или извън стъпката.
+ */
+function custom_dims_check(array $form, array $in): array
+{
+    $mode = $form['custom']['mode'];
+    $lim = $form['custom'];
+    $num = fn($k) => isset($in[$k]) && is_numeric(str_replace(',', '.', (string)$in[$k])) ? (float)str_replace(',', '.', (string)$in[$k]) : null;
+    $w = $num('w');
+    $d = $mode === 'wdh' ? $num('d') : $w;
+    $h = $num('h');
+    $err = [];
+    $label = ['w' => $mode === 'dh' ? 'Диаметърът' : 'Ширината', 'd' => 'Дълбочината', 'h' => 'Височината'];
+    $check = $mode === 'wdh' ? ['w' => $w, 'd' => $d, 'h' => $h] : ['w' => $w, 'h' => $h]; // при квадрат/кръг дълбочината = ширината
+    foreach ($check as $k => $v) {
+        if ($v === null) {
+            $err[] = $label[$k] . ' липсва.';
+            continue;
+        }
+        if ($v < $lim[$k . '_min'] - 0.01 || $v > $lim[$k . '_max'] + 0.01) {
+            $err[] = sprintf('%s трябва да е между %s и %s см.', $label[$k], fmt_num($lim[$k . '_min']), fmt_num($lim[$k . '_max']));
+        } elseif (abs(fmod($v - $lim[$k . '_min'], $lim['step'])) > 0.01 && abs(fmod($v - $lim[$k . '_min'], $lim['step']) - $lim['step']) > 0.01) {
+            $err[] = sprintf('%s се задава през %s см.', $label[$k], fmt_num($lim['step']));
+        }
+    }
+    if (!$err && $h > $lim['max_h_ratio'] * $w + 0.01) {
+        $err[] = sprintf('Височината може да е най-много %s от ширината (до %s см при ширина %s см).', fmt_num($lim['max_h_ratio']), fmt_num(floor($lim['max_h_ratio'] * $w / $lim['step']) * $lim['step']), fmt_num($w));
+    }
+    return ['dims' => [$w, $d, $h], 'errors' => $err];
+}
+
+/**
+ * Дали всички плоски детайли се побират в листа (полезна площ от настройките).
+ * Връща ['fits' => bool, 'part' => описание на детайла, който не се побира].
+ */
+function sheet_fit(array $m): array
+{
+    $sw = (float)setting('sheet_w_mm', '2970');
+    $sh = (float)setting('sheet_h_mm', '1470');
+    $L = max($sw, $sh);
+    $S = min($sw, $sh);
+    $fits = fn($a, $b) => ($a <= $L && $b <= $S) || ($a <= $S && $b <= $L);
+    $w = $m['w'] * 10;
+    $d = $m['d'] * 10;
+    $h = $m['h'] * 10;
+    $mm = fn($v) => fmt_num(round($v));
+    switch ($m['shape']) {
+        case 'hex':
+        case 'octagon':
+            $side = $m['shape'] === 'hex' ? $w / 2 : $w * sin(M_PI / 8);
+            if (!$fits($side, $h)) return ['fits' => false, 'part' => 'стена ' . $mm($side) . '×' . $mm($h) . ' мм'];
+            if (!$fits($w, $w)) return ['fits' => false, 'part' => 'дъно Ø' . $mm($w) . ' мм'];
+            return ['fits' => true, 'part' => ''];
+        case 'cross':
+            return $fits($w, $h) ? ['fits' => true, 'part' => ''] : ['fits' => false, 'part' => 'плоча ' . $mm($w) . '×' . $mm($h) . ' мм'];
+        case 'ringbowl':
+            $circ = M_PI * 0.72 * $w;
+            if ($circ > $L) return ['fits' => false, 'part' => 'пръстен с обиколка ' . $mm($circ) . ' мм'];
+            if ($w > $S) return ['fits' => false, 'part' => 'купа Ø' . $mm($w) . ' мм'];
+            return ['fits' => true, 'part' => ''];
+        default:
+            // всяка стена поотделно и дъното
+            $wallW = $m['shape'] === 'trapezoid' ? $w + 2 * 0.22 * $h : $w;
+            foreach ([[$wallW, $h, 'стена'], [$d, $h, 'стена'], [$w, $d, 'дъно']] as [$a, $b, $n]) {
+                if (!$fits($a, $b)) return ['fits' => false, 'part' => $n . ' ' . $mm($a) . '×' . $mm($b) . ' мм'];
+            }
+            // корпус, огънат от едно парче: разгънатата заготовка (ширина + 2 × височина) по късата страна на листа
+            if ($w + 2 * $h > $S || $d > $L) {
+                return ['fits' => false, 'part' => 'разгъната заготовка ' . $mm($w + 2 * $h) . ' мм (листът е ' . $mm($S) . ' мм)'];
+            }
+            return ['fits' => true, 'part' => ''];
+    }
+}

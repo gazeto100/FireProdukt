@@ -32,6 +32,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'text_edge_mm' => str_replace(',', '.', $in('text_edge_mm')),
         'bridge_mm' => str_replace(',', '.', $in('bridge_mm')),
         'inquiry_rate_limit' => $in('inquiry_rate_limit'),
+        'sheet_w_mm' => str_replace(',', '.', $in('sheet_w_mm')),
+        'sheet_h_mm' => str_replace(',', '.', $in('sheet_h_mm')),
+        'pallet_kg' => str_replace(',', '.', $in('pallet_kg')),
+        'custom_surcharge_pct' => str_replace(',', '.', $in('custom_surcharge_pct')),
         'mail_from' => $in('mail_from'),
         'mail_from_name' => $in('mail_from_name'),
         'smtp_host' => $in('smtp_host'),
@@ -48,6 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if (!is_numeric($vals['text_edge_mm']) || (float)$vals['text_edge_mm'] < 5 || (float)$vals['text_edge_mm'] > 150) $errors[] = 'Полето от ръба трябва да е между 5 и 150 мм.';
     if (!is_numeric($vals['bridge_mm']) || (float)$vals['bridge_mm'] < 1 || (float)$vals['bridge_mm'] > 20) $errors[] = 'Ширината на мостчето трябва да е между 1 и 20 мм.';
+    foreach (['sheet_w_mm' => 'Дължината на листа', 'sheet_h_mm' => 'Ширината на листа'] as $kk => $lab) {
+        if (!is_numeric($vals[$kk]) || (float)$vals[$kk] < 300 || (float)$vals[$kk] > 10000) $errors[] = "$lab трябва да е между 300 и 10000 мм.";
+    }
+    if (!is_numeric($vals['pallet_kg']) || (float)$vals['pallet_kg'] < 1 || (float)$vals['pallet_kg'] > 1000) $errors[] = 'Прагът за палет трябва да е между 1 и 1000 кг.';
+    if (!is_numeric($vals['custom_surcharge_pct']) || (float)$vals['custom_surcharge_pct'] < 0 || (float)$vals['custom_surcharge_pct'] > 300) $errors[] = 'Надценката за размер по избор трябва да е между 0 и 300 %.';
     if (!ctype_digit($vals['inquiry_rate_limit']) || (int)$vals['inquiry_rate_limit'] < 1) $errors[] = 'Лимитът за запитвания трябва да е цяло число ≥ 1.';
     if (!ctype_digit($vals['smtp_port'])) $errors[] = 'Невалиден SMTP порт.';
     if ($vals['meta_pixel_id'] !== '' && !preg_match('/^\d{6,20}$/', $vals['meta_pixel_id'])) $errors[] = 'Meta Pixel ID съдържа само цифри.';
@@ -103,6 +112,16 @@ admin_header('Настройки', 'settings');
       <label>Мин. ширина на мостче (мм)<input name="bridge_mm" type="number" step="0.5" min="1" max="20" value="<?= $v('bridge_mm', '3') ?>"></label>
     </div>
     <p class="muted small">Материал до 2,5 мм ползва стойността за 2 мм, по-дебел – тази за 3 мм. Технически таван: 40 знака (не се показва на клиента).</p>
+    <p class="small"><b>Производство и доставка.</b> Примерни стойности – потвърдете ги с производителя.</p>
+    <div class="two">
+      <label>Формат на листа – дължина (мм)<input name="sheet_w_mm" type="number" step="1" min="300" max="10000" value="<?= $v('sheet_w_mm', '2970') ?>"></label>
+      <label>Формат на листа – ширина (мм)<input name="sheet_h_mm" type="number" step="1" min="300" max="10000" value="<?= $v('sheet_h_mm', '1470') ?>"></label>
+    </div>
+    <div class="two">
+      <label>Праг за доставка с палет (кг)<input name="pallet_kg" type="number" step="0.5" min="1" max="1000" value="<?= $v('pallet_kg', '30') ?>"></label>
+      <label>Надценка за размер по избор (%)<input name="custom_surcharge_pct" type="number" step="1" min="0" max="300" value="<?= $v('custom_surcharge_pct', '20') ?>"></label>
+    </div>
+    <p class="muted small">Над прага за тегло клиентът вижда „Доставката е с палет, цената се уточнява в офертата“ (за всеки модел). Детайл, който не се побира в листа, дава бележка „изработва се от две части“. Границите и фиксираната сума за размер по избор са във „Форми“, цената на m² – в материалите („Опции“).</p>
     <label>Максимум запитвания на час от един IP<input name="inquiry_rate_limit" type="number" min="1" value="<?= $v('inquiry_rate_limit', '30') ?>"></label>
   </section>
 

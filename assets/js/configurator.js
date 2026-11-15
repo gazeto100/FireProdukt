@@ -12,7 +12,7 @@
   var groupsByCode = {};
   CAT.groups.forEach(function (g) { groupsByCode[g.code] = g; });
 
-  var state = { type: null, model: null, opts: {}, extras: [], text: '', qty: 1 };
+  var state = { type: null, model: null, custom: null, opts: {}, extras: [], text: '', qty: 1 };
   var tracked = { text: false };
 
   /* ---------- помощни ---------- */
@@ -24,6 +24,12 @@
   function num(n) { return String(Math.round(n * 10) / 10).replace('.', ','); }
   function money(n) { return Math.round(n).toLocaleString('bg-BG').replace(/ /g, ' '); }
   function model() { return CAT.models.filter(function (m) { return m.code === state.model; })[0]; }
+  /** Моделът с размерите по избор (ако са зададени) – той се рисува, проверява и смята */
+  function effModel() {
+    var m = model(), f = formOf(m);
+    if (!state.custom || !f || !f.custom) return m;
+    return Object.assign({}, m, { w: state.custom.w, d: state.custom.d, h: state.custom.h, sheet_area_m2: null, custom: true });
+  }
   function modelsOfType(t) { return CAT.models.filter(function (m) { return m.type === t; }); }
 
   /** Опциите на модела, групирани: { group: [{opt, mo}] } */
@@ -82,7 +88,7 @@
 
   /* ---------- изчисления ---------- */
   function compute() {
-    var m = model();
+    var m = effModel();
     var lines = G.textLines(state.text, L);
     var text = lines.join('\n');
     var fontKey = renderParam('font', 'font', 'russo');
@@ -105,8 +111,12 @@
     var sel = selected(m);
     var isDec = !!text || !!pattern;
     res.decoratedCount = isDec ? walls.length : 0;
-    res.price = G.calcPrice(m, sel, walls.length, isDec, state.qty);
+    var fm = formOf(m);
+    res.price = m.custom ? G.calcPriceCustom(m, fm.custom, sel, walls.length, isDec, state.qty, SET) : G.calcPrice(m, sel, walls.length, isDec, state.qty);
     res.weight = G.calcWeight(m, sel);
+    // бележки за офертата: палет (за всеки модел над прага) и две части (размер по избор извън листа)
+    res.pallet = res.weight.kg > SET.pallet_kg;
+    res.sheet = m.custom ? G.sheetFit(m, SET) : { fits: true, part: '' };
     res.legCm = renderParam('legs', 'leg_cm', 0);
     res.finish = renderParam('material', 'finish', 'inox');
     return res;
@@ -212,6 +222,39 @@
     }
     return dropped;
   }
+  /** Полета за размер по избор: плъзгач + числово поле за всяко измерение според формата */
+  function dimKeys(lim) {
+    if (lim.mode === 'dh') return [['w', 'Диаметър'], ['h', 'Височина']];
+    if (lim.mode === 'wh') return [['w', 'Ширина и дълбочина'], ['h', 'Височина']];
+    return [['w', 'Ширина'], ['d', 'Дълбочина'], ['h', 'Височина']];
+  }
+  function customFields(lim) {
+    var h = '<div class="custom-size" id="customBox">';
+    dimKeys(lim).forEach(function (k) {
+      var key = k[0], v = state.custom[key];
+      h += '<div class="dim-row"><label for="num-' + key + '">' + esc(k[1]) + '</label>' +
+        '<input type="range" id="rng-' + key + '" data-dim="' + key + '" min="' + lim[key + '_min'] + '" max="' + lim[key + '_max'] + '" step="' + lim.step + '" value="' + v + '" aria-label="' + esc(k[1]) + '">' +
+        '<span class="dim-num"><input type="number" id="num-' + key + '" data-dim="' + key + '" min="' + lim[key + '_min'] + '" max="' + lim[key + '_max'] + '" step="' + lim.step + '" value="' + v + '" inputmode="numeric"> см</span></div>';
+    });
+    h += '<p class="custom-msg" id="customMsg" role="status" hidden></p>';
+    h += '<p class="step-hint">Граници: ' + dimKeys(lim).map(function (k) { return k[1].toLowerCase() + ' ' + num(lim[k[0] + '_min']) + '–' + num(lim[k[0] + '_max']) + ' см'; }).join(', ') +
+      '; стъпка ' + num(lim.step) + ' см. Изгледът и надписът се преизчисляват веднага.</p></div>';
+    return h;
+  }
+  function syncDims() {
+    ['w', 'd', 'h'].forEach(function (k) {
+      var r = $('#rng-' + k), n = $('#num-' + k);
+      if (r) r.value = state.custom[k];
+      if (n) n.value = state.custom[k];
+    });
+  }
+  function customMsg(msgs) {
+    var el = $('#customMsg');
+    if (!el) return;
+    el.hidden = !msgs.length;
+    el.textContent = msgs.join(' ');
+  }
+
   var SUBGROUPS = [['cook', 'За печене'], ['comfort', 'За удобство'], ['carry', 'За пренасяне'], ['', 'Други']];
 
   function build() {
@@ -230,10 +273,17 @@
       return optCard('form', f.code, curForm && curForm.code === f.code, f.name, formRange(f), 'opt-model', thumb);
     }).join('') + '</div>');
     var sizes = (curForm ? curForm.models : [m.code]).map(function (c) { return CAT.models.filter(function (x) { return x.code === c; })[0]; }).filter(Boolean);
-    html += stepHtml('st-size', 'Размер', '<div class="sizes">' + sizes.map(function (x) {
-      return '<label class="size-btn"><input type="radio" name="model" value="' + esc(x.code) + '"' + (state.model === x.code ? ' checked' : '') + '>' +
+    var lim = curForm && curForm.custom;
+    var sizeBody = '<div class="sizes">' + sizes.map(function (x) {
+      return '<label class="size-btn"><input type="radio" name="model" value="' + esc(x.code) + '"' + (!state.custom && state.model === x.code ? ' checked' : '') + '>' +
         '<span><b>' + esc(x.size_label || x.name) + '</b><small>' + esc(sizeText(x)) + '</small></span></label>';
-    }).join('') + '</div>');
+    }).join('') + '</div>';
+    if (lim) {
+      sizeBody += '<button type="button" class="link-btn custom-toggle" id="customToggle" aria-expanded="' + (state.custom ? 'true' : 'false') + '">' +
+        (state.custom ? 'Обратно към стандартните размери' : 'Размер по избор') + '</button>';
+      if (state.custom) sizeBody += customFields(lim);
+    }
+    html += stepHtml('st-size', 'Размер', sizeBody);
     // 3. Материал
     if (mo.material) {
       html += stepHtml('st-material', groupsByCode.material.name, '<div class="opts">' + mo.material.map(function (x) {
@@ -321,19 +371,25 @@
       last = r;
       previewEl.innerHTML = window.FPRender.render(renderOpts(r));
       var m = r.m;
-      var dims = m.shape === 'hex' ? 'Ø' + num(m.w) + ' × ' + num(m.h) + ' см' : num(m.w) + ' × ' + num(m.d) + ' × ' + num(m.h) + ' см';
+      var dims = sizeText(m) + (m.custom ? ' <span class="muted">(по избор)</span>' : '');
       if (r.legCm) dims += ' <span class="muted">(+' + num(r.legCm) + ' см крачета)</span>';
       var spec = '<span>' + dims + '</span><span>≈ ' + num(r.weight.kg) + ' кг</span>';
       if (r.decoratedCount > 1) {
         spec += '<span>' + r.decoratedCount + ' декорирани страни' + (r.text && r.fit ? ' · надписът се повтаря на страничните' : '') + '</span>';
       }
       specsEl.innerHTML = spec;
+      // бележки под изгледа: палет и изработка от две части
+      var flags = [];
+      if (r.pallet) flags.push('Доставката е с палет, цената се уточнява в офертата.');
+      if (!r.sheet.fits) flags.push('Този размер се изработва от две части, цената се уточнява в офертата.');
+      var fl = $('#cfgFlags');
+      if (fl) { fl.hidden = !flags.length; fl.innerHTML = flags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join(''); }
       var priceTxt = r.price ? (r.price.min === r.price.max ? money(r.price.min) : money(r.price.min) + ' – ' + money(r.price.max)) + ' ' + SET.currency : '';
       $$('[data-price]').forEach(function (el) {
         el.hidden = !r.price;
         if (r.price) el.innerHTML = 'Ориентировъчно: <b>' + priceTxt + '</b>' + (state.qty > 1 ? ' <span class="muted">за ' + state.qty + ' бр.</span>' : '');
       });
-      $('#barModel').textContent = m.name;
+      $('#barModel').textContent = m.custom ? (formOf(m) ? formOf(m).name : m.name) + ' · по избор' : m.name;
       $('#barInfo').textContent = r.price ? priceTxt : '≈ ' + num(r.weight.kg) + ' кг';
       updateTextUi(r);
       save();
@@ -387,15 +443,18 @@
       state.type = t.value;
       var ff = formsOfType(state.type)[0];
       if (ff) state.model = ff.models[0];
+      state.custom = null;
       normalizeState(); build(); track('model_select');
       return;
     } else if (name === 'form') {
       var fm = CAT.forms.filter(function (x) { return x.code === t.value; })[0];
       if (fm) state.model = fm.models[0];
+      state.custom = null;
       normalizeState(); build(); track('model_select');
       return;
     } else if (name === 'model') {
       state.model = t.value;
+      state.custom = null;
       normalizeState(); build(); track('model_select');
       return;
     } else if (name === 'extras') {
@@ -424,6 +483,44 @@
     }
     var note = $('#extrasNote');
     if (note) { note.hidden = !notes.length; note.textContent = notes.join(' '); }
+  });
+
+  /* ---------- размер по избор ---------- */
+  stepsEl.addEventListener('click', function (e) {
+    if (!e.target.closest('#customToggle')) return;
+    var m = model(), f = formOf(m);
+    if (state.custom) {
+      state.custom = null;
+    } else if (f && f.custom) {
+      state.custom = G.clampCustom(f.custom, { w: m.w, d: m.d, h: m.h }).dims;
+    }
+    build();
+    var tg = $('#customToggle');
+    if (tg) tg.focus({ preventScroll: true });
+  });
+  stepsEl.addEventListener('input', function (e) {
+    var k = e.target.getAttribute && e.target.getAttribute('data-dim');
+    if (!k || e.target.type !== 'range' || !state.custom) return;
+    var f = formOf(model());
+    state.custom[k] = parseFloat(e.target.value);
+    var c = G.clampCustom(f.custom, state.custom);   // отношение височина/ширина
+    state.custom = c.dims;
+    syncDims();
+    customMsg(c.messages);
+    update();
+  });
+  stepsEl.addEventListener('change', function (e) {
+    var k = e.target.getAttribute && e.target.getAttribute('data-dim');
+    if (!k || e.target.type !== 'number' || !state.custom) return;
+    var f = formOf(model()), raw = {};
+    raw.w = state.custom.w; raw.d = state.custom.d; raw.h = state.custom.h;
+    raw[k] = e.target.value === '' ? NaN : e.target.value;
+    var c = G.clampCustom(f.custom, raw);
+    state.custom = c.dims;
+    e.target.value = state.custom[k];
+    syncDims();
+    customMsg(c.messages);
+    update();
   });
 
   stepsEl.addEventListener('click', function (e) {
@@ -510,6 +607,7 @@
         state.extras = Array.isArray(s.extras) ? s.extras : [];
         state.text = typeof s.text === 'string' ? s.text : '';
         state.qty = Math.max(1, Math.min(50, parseInt(s.qty, 10) || 1));
+        state.custom = s.custom && typeof s.custom === 'object' ? s.custom : null;
         return true;
       }
     } catch (e) { /* няма достъп */ }
@@ -643,7 +741,7 @@
         csrf: CFG.csrf,
         t: CFG.t,
         website: form.elements.website.value,
-        config: { model: state.model, options: Object.assign({}, state.opts, { extras: state.extras }), text: state.text, quantity: state.qty },
+        config: { model: state.model, custom: state.custom, options: Object.assign({}, state.opts, { extras: state.extras }), text: state.text, quantity: state.qty },
         contact: {
           name: form.elements.name.value, phone: form.elements.phone.value, email: form.elements.email.value,
           city: form.elements.city.value, note: form.elements.note.value, consent: form.elements.consent.checked
@@ -706,6 +804,7 @@
   }
   if (qModel && CAT.models.some(function (m) { return m.code === qModel; }) && qModel !== state.model) {
     state.model = qModel;
+    state.custom = null;
     state.opts = {};
     state.extras = [];
   }
@@ -717,6 +816,10 @@
     history.replaceState(null, '', u.pathname + u.search + u.hash);
   }
   if (!model()) state.model = CAT.models[0].code;
+  if (state.custom) {
+    var sf = formOf(model());
+    state.custom = sf && sf.custom ? G.clampCustom(sf.custom, state.custom).dims : null;
+  }
   state.type = model().type;
   normalizeState();
   qtyInput.value = state.qty;

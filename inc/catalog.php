@@ -32,6 +32,8 @@ function load_catalog(bool $activeOnly = true): array
             'price_type' => $o['price_type'],
             'price_min' => (float)$o['price_min'],
             'price_max' => (float)$o['price_max'],
+            'price_m2_min' => isset($o['price_m2_min']) ? (float)$o['price_m2_min'] : null,
+            'price_m2_max' => isset($o['price_m2_max']) ? (float)$o['price_m2_max'] : null,
             'weight_kg' => (float)$o['weight_kg'],
             'render' => json_decode((string)$o['render'], true) ?: new stdClass(),
         ];
@@ -110,11 +112,24 @@ function load_catalog(bool $activeOnly = true): array
                 if ($x['code'] === $fc) $fr = $x;
             }
             $forms[$fc] = ['code' => $fc, 'name' => $fr['name'] ?? $m['name'], 'type' => $m['type'], 'shape' => $fr['shape'] ?? $m['shape'],
-                'description' => $fr['description'] ?? $m['description'], 'sort' => (int)($fr['sort'] ?? 99), 'models' => []];
+                'description' => $fr['description'] ?? $m['description'], 'sort' => (int)($fr['sort'] ?? 99), 'models' => [],
+                // граници за размер по избор (null = формата няма размер по избор)
+                'custom' => $fr && !empty($fr['custom_enabled']) && $fr['w_min'] !== null ? [
+                    'w_min' => (float)$fr['w_min'], 'w_max' => (float)$fr['w_max'], 'd_min' => (float)$fr['d_min'], 'd_max' => (float)$fr['d_max'],
+                    'h_min' => (float)$fr['h_min'], 'h_max' => (float)$fr['h_max'], 'step' => max(0.5, (float)$fr['step_cm']),
+                    'max_h_ratio' => (float)$fr['max_h_ratio'], 'fixed' => (float)$fr['custom_fixed'], 'mode' => 'wdh',
+                ] : null];
         }
         $forms[$fc]['models'][] = $m['code'];
     }
     $forms = array_values($forms);
+    $mByCode = array_column($models, null, 'code');
+    foreach ($forms as &$fx) {
+        if ($fx['custom']) {
+            $fx['custom']['mode'] = form_dims_mode($fx['shape'], array_map(fn($c) => $mByCode[$c], $fx['models']));
+        }
+    }
+    unset($fx);
     usort($forms, fn($a, $b) => [$a['type'], $a['sort']] <=> [$b['type'], $b['sort']]);
 
     // правила между опциите (изключват се / изискват) – само между активни опции
@@ -141,6 +156,10 @@ function load_catalog(bool $activeOnly = true): array
             'min_letter_3mm' => (float)setting('min_letter_3mm', '35'),
             'show_prices' => setting('show_prices', '0') === '1',
             'currency' => setting('currency', '€'),
+            'sheet_w_mm' => (float)setting('sheet_w_mm', '2970'),
+            'sheet_h_mm' => (float)setting('sheet_h_mm', '1470'),
+            'pallet_kg' => (float)setting('pallet_kg', '30'),
+            'custom_surcharge_pct' => (float)setting('custom_surcharge_pct', '20'),
         ],
         'layout' => geometry_layout(),
         'fonts' => font_metrics(),
@@ -161,9 +180,14 @@ function public_catalog(): array
         }
         unset($m);
         foreach ($cat['options'] as &$o) {
-            unset($o['price_min'], $o['price_max'], $o['price_type']);
+            unset($o['price_min'], $o['price_max'], $o['price_type'], $o['price_m2_min'], $o['price_m2_max']);
         }
         unset($o);
+        foreach ($cat['forms'] as &$fm) {
+            if ($fm['custom']) unset($fm['custom']['fixed']);
+        }
+        unset($fm);
+        unset($cat['settings']['custom_surcharge_pct']);
     }
     return $cat;
 }

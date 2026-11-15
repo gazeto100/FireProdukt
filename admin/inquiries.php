@@ -73,6 +73,9 @@ admin_header('Запитвания', 'inquiries');
   <a class="row card<?= $isProj ? ' row-project' : '' ?>" href="inquiry.php?id=<?= (int)$r['id'] ?>">
     <div class="row-main">
       <?php if ($isProj): ?><span class="badge badge-project">Проект</span><?php endif; ?>
+      <?php if (!empty($cfg['custom'])): ?><span class="badge badge-custom">Размер по избор: <?= e(in_array($cfg['model']['shape'] ?? '', ['hex', 'octagon', 'cross', 'ringbowl'], true) ? 'Ø' . fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['h']) : fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['d']) . ' × ' . fmt_num($cfg['model']['h'])) ?> см</span><?php endif; ?>
+      <?php if (!empty($cfg['pallet'])): ?><span class="badge badge-flag">палет</span><?php endif; ?>
+      <?php if (!empty($cfg['two_parts'])): ?><span class="badge badge-flag">2 части</span><?php endif; ?>
       <span class="badge st-<?= e($r['status']) ?>"><?= e($statuses[$r['status']] ?? $r['status']) ?></span>
       <b><?= $r['name'] !== '' ? e($r['name']) : '<span class="muted">(изтрити лични данни)</span>' ?></b><?= $r['phone'] !== '' ? ' · ' . e($r['phone']) : '' ?><?= $r['city'] ? ' · ' . e($r['city']) : '' ?>
     </div>
@@ -80,7 +83,7 @@ admin_header('Запитвания', 'inquiries');
       <?php if ($isProj): ?>
         <?= e(($cfg['object'] ?? '') !== '' ? $cfg['object'] : 'Обект') ?> · <?= (int)$r['quantity'] ?> бр. · <?= e(project_materials_short()[$cfg['material'] ?? ''] ?? '—') ?><?= $r['files'] ? ' · 📎 лого' : '' ?>
       <?php else: ?>
-        <?= e($r['model_name'] ?? ($cfg['model']['name'] ?? '—')) ?><?= ($cfg['text'] ?? '') !== '' ? ' · „' . e($cfg['text']) . '“' : '' ?><?= $r['quantity'] > 1 ? ' · ' . (int)$r['quantity'] . ' бр.' : '' ?>
+        <?= e(!empty($cfg['custom']) ? ($cfg['model']['form_name'] ?? $r['model_name'] ?? '') : ($r['model_name'] ?? ($cfg['model']['name'] ?? '—'))) ?><?= ($cfg['text'] ?? '') !== '' ? ' · „' . e($cfg['text']) . '“' : '' ?><?= $r['quantity'] > 1 ? ' · ' . (int)$r['quantity'] . ' бр.' : '' ?>
       <?php endif; ?>
     </div>
     <div class="row-meta">

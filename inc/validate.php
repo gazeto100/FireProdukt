@@ -13,6 +13,28 @@ function validate_config(array $in, array $cat): array
         return ['errors' => ['model' => 'Изберете модел.'], 'config' => null];
     }
 
+    // Размер по избор: опциите и цените на опциите са като на избрания стандартен размер на формата,
+    // а размерите се заменят след проверка спрямо границите на формата
+    $form = null;
+    foreach ($cat['forms'] ?? [] as $fm) {
+        if ($fm['code'] === ($model['form'] ?? '')) $form = $fm;
+    }
+    $custom = false;
+    if (!empty($in['custom']) && is_array($in['custom'])) {
+        if (!$form || empty($form['custom'])) {
+            $errors['size'] = 'За тази форма няма размер по избор.';
+        } else {
+            $cc = custom_dims_check($form, $in['custom']);
+            if ($cc['errors']) {
+                $errors['size'] = implode(' ', $cc['errors']);
+            } else {
+                [$cw, $cd, $ch] = $cc['dims'];
+                $model = array_merge($model, ['w' => $cw, 'd' => $cd, 'h' => $ch, 'sheet_area_m2' => null]);
+                $custom = true;
+            }
+        }
+    }
+
     $compat = [];
     foreach ($model['options'] as $mo) {
         $compat[$mo['id']] = $mo;
@@ -110,8 +132,13 @@ function validate_config(array $in, array $cat): array
     }
 
     $isDecorated = $text !== '' || $pattern !== null;
-    $price = calc_price($model, $sel, count($walls), $isDecorated, (int)$qty);
+    $price = $custom
+        ? calc_price_custom($model, $form, $sel, count($walls), $isDecorated, (int)$qty)
+        : calc_price($model, $sel, count($walls), $isDecorated, (int)$qty);
     $weight = calc_weight($model, $sel);
+    // бележки за офертата: тежко -> палет (за всеки модел); размер по избор, който не се побира в листа -> две части
+    $pallet = $weight['kg'] > (float)setting('pallet_kg', '30');
+    $sheet = $custom ? sheet_fit($model) : ['fits' => true, 'part' => ''];
 
     $config = [
         'model' => [
@@ -122,6 +149,7 @@ function validate_config(array $in, array $cat): array
             'w' => $model['w'],
             'd' => $model['d'],
             'h' => $model['h'],
+            'form_name' => $form['name'] ?? null,
         ],
         'options' => $chosen,
         'text' => $text,
@@ -134,6 +162,10 @@ function validate_config(array $in, array $cat): array
         'quantity' => (int)$qty,
         'weight_kg' => $weight['kg'],
         'area_m2' => $weight['area_m2'],
+        'custom' => $custom,
+        'pallet' => $pallet,
+        'two_parts' => !$sheet['fits'],
+        'two_parts_part' => $sheet['part'],
     ];
 
     return ['errors' => $errors, 'config' => $config, 'price' => $price, 'weight' => $weight, 'model' => $model];
@@ -186,10 +218,10 @@ function config_lines(array $cfg, array $cat): array
     }
     $m = $cfg['model'];
     $lines = [
-        'Модел' => $m['name'],
-        'Размери' => ($m['shape'] ?? '') === 'hex'
+        'Модел' => !empty($cfg['custom']) ? ($m['form_name'] ?? $m['name']) . ' – размер по избор (опции като „' . $m['name'] . '“)' : $m['name'],
+        'Размери' => (!empty($cfg['custom']) ? 'ПО ИЗБОР: ' : '') . (in_array($m['shape'] ?? '', ['hex', 'octagon', 'cross', 'ringbowl'], true)
             ? sprintf('Ø%s × %s см', fmt_num($m['w']), fmt_num($m['h']))
-            : sprintf('%s × %s × %s см', fmt_num($m['w']), fmt_num($m['d']), fmt_num($m['h'])),
+            : sprintf('%s × %s × %s см', fmt_num($m['w']), fmt_num($m['d']), fmt_num($m['h']))),
     ];
     foreach ($cfg['options'] as $g => $v) {
         $label = $groupNames[$g] ?? $g;
@@ -213,6 +245,12 @@ function config_lines(array $cfg, array $cat): array
     if ($cfg['decorated_walls'] > 0) {
         $lines['Декорирани страни'] = ($cfg['options']['sides']['name'] ?? '') . ' (' . $cfg['decorated_walls'] . ')';
     }
+    if (!empty($cfg['two_parts'])) {
+        $lines['Изработка'] = 'от две части – не се побира в листа (' . ($cfg['two_parts_part'] ?? '') . '); цената се уточнява в офертата';
+    }
+    if (!empty($cfg['pallet'])) {
+        $lines['Доставка'] = 'с палет (над ' . fmt_num(setting('pallet_kg', '30')) . ' кг); цената се уточнява в офертата';
+    }
     $lines['Количество'] = $cfg['quantity'] . ' бр.';
     $lines['Приблизително тегло'] = fmt_kg((float)$cfg['weight_kg']) . ' / бр.';
     return $lines;
@@ -221,4 +259,10 @@ function config_lines(array $cfg, array $cat): array
 function fmt_num($n): string
 {
     return rtrim(rtrim(number_format((float)$n, 1, ',', ''), '0'), ',');
+}
+
+/** Число за поле във формуляр – без загуба на точност (до 4 знака след запетаята), напр. 7,93 или 1,35 */
+function fmt_input($n): string
+{
+    return rtrim(rtrim(number_format((float)$n, 4, ',', ''), '0'), ',');
 }

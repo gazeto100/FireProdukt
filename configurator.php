@@ -16,6 +16,7 @@ page_header('Сглоби своя модел', ['body_class' => 'page-config', 
 
   <div class="cfg-panel">
     <p class="cfg-note">Изгледът е ориентировъчен. Преди изработка ще получите финален проект за одобрение.</p>
+    <p class="cfg-flags" id="cfgFlags" role="status" hidden></p>
     <p class="cfg-price" data-price hidden></p>
     <noscript><p class="err">Конфигураторът изисква JavaScript. Обадете ни се или пишете – ще го сглобим заедно.</p></noscript>
 

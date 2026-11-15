@@ -53,6 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($v['price_min'] === null || $v['price_max'] === null || $v['price_min'] < 0 || $v['price_max'] < $v['price_min']) $errors[] = 'Цена: „от“ ≥ 0 и „до“ ≥ „от“.';
     if ($v['price_type'] === 'factor' && ($v['price_min'] <= 0 || $v['price_max'] > 10)) $errors[] = 'Коефициентът трябва да е между 0 и 10 (напр. 1,30).';
     if ($v['weight_kg'] < 0 || $v['weight_kg'] > 500) $errors[] = 'Невалидно тегло.';
+    if ($gcode === 'material') {
+        // цена на m² готово изделие за размер по избор
+        $v['price_m2_min'] = post_num('price_m2_min');
+        $v['price_m2_max'] = post_num('price_m2_max');
+        if ($v['price_m2_min'] === null || $v['price_m2_max'] === null || $v['price_m2_min'] <= 0 || $v['price_m2_max'] < $v['price_m2_min']) {
+            $errors[] = 'Цена на m² за размер по избор: попълнете „от“ > 0 и „до“ ≥ „от“.';
+        }
+    }
 
     // параметри за изгледа и изчисленията – според групата
     $render = [];
@@ -95,10 +103,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $params[] = $id;
             db()->prepare('UPDATE options SET code=?, name=?, hint=?, subgroup=?, price_type=?, price_min=?, price_max=?, weight_kg=?, render=?, sort=?, active=? WHERE id=?')->execute($params);
             flash('Опцията е запазена.');
+            if ($gcode === 'material') {
+                db()->prepare('UPDATE options SET price_m2_min = ?, price_m2_max = ? WHERE id = ?')->execute([$v['price_m2_min'], $v['price_m2_max'], $id]);
+            }
         } else {
             array_unshift($params, $gid);
             db()->prepare('INSERT INTO options (group_id, code, name, hint, subgroup, price_type, price_min, price_max, weight_kg, render, sort, active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')->execute($params);
             $id = (int)db()->lastInsertId();
+            if ($gcode === 'material') {
+                db()->prepare('UPDATE options SET price_m2_min = ?, price_m2_max = ? WHERE id = ?')->execute([$v['price_m2_min'], $v['price_m2_max'], $id]);
+            }
             if (isset($_POST['add_all'])) {
                 db()->prepare('INSERT INTO model_options (model_id, option_id) SELECT id, ? FROM models')->execute([$id]);
             }
@@ -116,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(url('admin/option_edit.php?id=' . $id));
     }
 }
-$r = fn($k, $d = '') => e(isset($render[$k]) && $render[$k] !== null ? (is_float($render[$k]) || is_int($render[$k]) ? fmt_num($render[$k]) : $render[$k]) : $d);
+$r = fn($k, $d = '') => e(isset($render[$k]) && $render[$k] !== null ? (is_float($render[$k]) || is_int($render[$k]) ? fmt_input($render[$k]) : $render[$k]) : $d);
 $usedBy = $opt ? db_all('SELECT m.id, m.name FROM model_options mo JOIN models m ON m.id = mo.model_id WHERE mo.option_id = ? ORDER BY m.sort', [$id]) : [];
 
 admin_header($opt ? 'Опция ' . $opt['name'] : 'Нова опция', 'options');
@@ -143,11 +157,18 @@ admin_header($opt ? 'Опция ' . $opt['name'] : 'Нова опция', 'optio
       </select>
     </label>
     <div class="two">
-      <label>от<input name="price_min" inputmode="decimal" value="<?= e(fmt_num($v['price_min'] ?? 0)) ?>"></label>
-      <label>до<input name="price_max" inputmode="decimal" value="<?= e(fmt_num($v['price_max'] ?? 0)) ?>"></label>
+      <label>от<input name="price_min" inputmode="decimal" value="<?= e(fmt_input($v['price_min'] ?? 0)) ?>"></label>
+      <label>до<input name="price_max" inputmode="decimal" value="<?= e(fmt_input($v['price_max'] ?? 0)) ?>"></label>
     </div>
+    <?php if ($gcode === 'material'): ?>
+      <p class="small"><b>Цена на m² за размер по избор</b>, <?= e(setting('currency', '€')) ?> <span class="muted">(готово изделие; стандартните размери пазят своята цена)</span></p>
+      <div class="two">
+        <label>от<input name="price_m2_min" inputmode="decimal" value="<?= isset($v['price_m2_min']) && $v['price_m2_min'] !== null ? e(fmt_input($v['price_m2_min'])) : '' ?>"></label>
+        <label>до<input name="price_m2_max" inputmode="decimal" value="<?= isset($v['price_m2_max']) && $v['price_m2_max'] !== null ? e(fmt_input($v['price_m2_max'])) : '' ?>"></label>
+      </div>
+    <?php endif; ?>
   </fieldset>
-  <label>Тегло, кг <span class="muted small">(добавя се към теглото на модела)</span><input name="weight_kg" inputmode="decimal" value="<?= e(fmt_num($v['weight_kg'] ?? 0)) ?>"></label>
+  <label>Тегло, кг <span class="muted small">(добавя се към теглото на модела)</span><input name="weight_kg" inputmode="decimal" value="<?= e(fmt_input($v['weight_kg'] ?? 0)) ?>"></label>
 
   <fieldset>
     <legend>Изглед и изчисления</legend>

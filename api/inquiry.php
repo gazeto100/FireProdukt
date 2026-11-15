@@ -167,7 +167,7 @@ function send_inquiry_mails(int $id, string $code, array $config, array $cat, ar
             . '<p style="margin-top:16px"><a href="' . e(abs_url('admin/inquiry.php?id=' . $id)) . '">Отвори в админ панела</a></p>'
             . '<p style="color:#888;font-size:13px">Прегледът е прикачен като preview.svg.</p></div>';
         $att = $svg ? [['name' => 'preview-' . $code . '.svg', 'type' => 'image/svg+xml', 'data' => $svg]] : [];
-        send_mail($notify, "Ново запитване $code – {$config['model']['name']} ({$ct['name']})", $t, $html, $att, $id);
+        send_mail($notify, "Ново запитване $code – " . (!empty($config['custom']) ? ($config['model']['form_name'] ?? $config['model']['name']) . ' – размер по избор' : $config['model']['name']) . " ({$ct['name']})", $t, $html, $att, $id);
     }
 
     // Потвърждение до клиента

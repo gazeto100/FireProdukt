@@ -78,7 +78,7 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
 ?>
 <p><a href="inquiries.php">← Всички запитвания</a></p>
 <div class="a-title">
-  <h1><?= e($inq['public_code']) ?> <?= $isProj ? '<span class="badge badge-project">Проект</span>' : '' ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
+  <h1><?= e($inq['public_code']) ?> <?= $isProj ? '<span class="badge badge-project">Проект</span>' : '' ?> <?= !empty($cfg['custom']) ? '<span class="badge badge-custom">Размер по избор</span>' : '' ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
   <span class="muted"><?= e(date('d.m.Y H:i', strtotime($inq['created_at']))) ?></span>
 </div>
 
