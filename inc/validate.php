@@ -138,7 +138,7 @@ function validate_config(array $in, array $cat): array
     $weight = calc_weight($model, $sel);
     // бележки за офертата: тежко -> палет (за всеки модел); размер по избор, който не се побира в листа -> две части
     $pallet = $weight['kg'] > (float)setting('pallet_kg', '30');
-    $sheet = $custom ? sheet_fit($model) : ['fits' => true, 'part' => ''];
+    $sheet = $custom ? sheet_fit($model, $form['construction'] ?? 'panels') : ['fits' => true, 'part' => ''];
 
     $config = [
         'model' => [

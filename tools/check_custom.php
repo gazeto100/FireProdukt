@@ -54,7 +54,7 @@ foreach ($cat['models'] as $m) {
         $v = validate_config(['model' => $m['code'], 'options' => ['material' => $code], 'quantity' => 1], $cat);
         $row[] = $code . ' ' . fmt_num($v['weight']['kg']) . ' кг' . ($v['config']['pallet'] ? ' [палет]' : '');
     }
-    $sf = sheet_fit($m);
+    $sf = sheet_fit($m, $formBy[$m['form']]['construction'] ?? 'panels');
     line(sprintf('%-14s %-12s %s%s', $m['code'], size_txt($m), implode(', ', $row), $sf['fits'] ? '' : ' | не се побира: ' . $sf['part']));
 }
 

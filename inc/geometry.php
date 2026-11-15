@@ -284,10 +284,13 @@ function custom_dims_check(array $form, array $in): array
 }
 
 /**
- * Дали всички плоски детайли се побират в листа (полезна площ от настройките).
- * Връща ['fits' => bool, 'part' => описание на детайла, който не се побира].
+ * Побиране на плоските детайли в листа (формат от настройките).
+ * $construction: 'panels' – сглобява се от отделни панели (всяка стена и дъното поотделно);
+ *                'bent'   – корпус, огънат от едно парче (проверява се разгънатата заготовка).
+ * Кръглите форми (купа с пръстен) винаги се проверяват по обиколката π × D до дължината на листа.
+ * Огледало на sheetFit() в assets/js/geometry.js. Връща ['fits' => bool, 'part' => описание на детайла, който не се побира]
  */
-function sheet_fit(array $m): array
+function sheet_fit(array $m, string $construction = 'panels'): array
 {
     $sw = (float)setting('sheet_w_mm', '2970');
     $sh = (float)setting('sheet_h_mm', '1470');
@@ -298,30 +301,46 @@ function sheet_fit(array $m): array
     $d = $m['d'] * 10;
     $h = $m['h'] * 10;
     $mm = fn($v) => fmt_num(round($v));
+    $bent = $construction === 'bent';
+    $parts = [];
     switch ($m['shape']) {
-        case 'hex':
-        case 'octagon':
-            $side = $m['shape'] === 'hex' ? $w / 2 : $w * sin(M_PI / 8);
-            if (!$fits($side, $h)) return ['fits' => false, 'part' => 'стена ' . $mm($side) . '×' . $mm($h) . ' мм'];
-            if (!$fits($w, $w)) return ['fits' => false, 'part' => 'дъно Ø' . $mm($w) . ' мм'];
-            return ['fits' => true, 'part' => ''];
-        case 'cross':
-            return $fits($w, $h) ? ['fits' => true, 'part' => ''] : ['fits' => false, 'part' => 'плоча ' . $mm($w) . '×' . $mm($h) . ' мм'];
         case 'ringbowl':
             $circ = M_PI * 0.72 * $w;
-            if ($circ > $L) return ['fits' => false, 'part' => 'пръстен с обиколка ' . $mm($circ) . ' мм'];
-            if ($w > $S) return ['fits' => false, 'part' => 'купа Ø' . $mm($w) . ' мм'];
-            return ['fits' => true, 'part' => ''];
+            if ($circ > $L) return ['fits' => false, 'part' => 'пръстен с обиколка ' . $mm($circ) . ' мм (листът е ' . $mm($L) . ' мм)'];
+            $parts[] = [$w, $w, 'дъно на купата Ø' . $mm($w) . ' мм'];
+            break;
+        case 'cross':
+            $parts[] = [$w, $h, 'плоча ' . $mm($w) . '×' . $mm($h) . ' мм'];
+            break;
+        case 'hex':
+        case 'octagon':
+            $n = $m['shape'] === 'hex' ? 6 : 8;
+            $side = $m['shape'] === 'hex' ? $w / 2 : $w * sin(M_PI / 8);
+            if ($bent) {
+                // лента от всички стени, огъната по ръбовете
+                $parts[] = [$n * $side, $h, 'разгъната заготовка ' . $mm($n * $side) . '×' . $mm($h) . ' мм'];
+            } else {
+                $parts[] = [$side, $h, 'стена ' . $mm($side) . '×' . $mm($h) . ' мм'];
+            }
+            $parts[] = [$w, $w, 'дъно ' . $mm($w) . '×' . $mm($w) . ' мм'];
+            break;
         default:
-            // всяка стена поотделно и дъното
+            // правоъгълни: box, trapezoid (горният ръб е по-широк), pedestal, grill
             $wallW = $m['shape'] === 'trapezoid' ? $w + 2 * 0.22 * $h : $w;
-            foreach ([[$wallW, $h, 'стена'], [$d, $h, 'стена'], [$w, $d, 'дъно']] as [$a, $b, $n]) {
-                if (!$fits($a, $b)) return ['fits' => false, 'part' => $n . ' ' . $mm($a) . '×' . $mm($b) . ' мм'];
+            if ($bent) {
+                // дъно + две стени от едно парче: (ширина + 2 × височина) по късата страна на листа; предната и задната стена отделно
+                if ($w + 2 * $h > $S || $d > $L) {
+                    return ['fits' => false, 'part' => 'разгъната заготовка ' . $mm($w + 2 * $h) . ' мм (късата страна на листа е ' . $mm($S) . ' мм)'];
+                }
+                $parts[] = [$wallW, $h, 'стена ' . $mm($wallW) . '×' . $mm($h) . ' мм'];
+            } else {
+                $parts[] = [$wallW, $h, 'стена ' . $mm($wallW) . '×' . $mm($h) . ' мм'];
+                $parts[] = [$d, $h, 'стена ' . $mm($d) . '×' . $mm($h) . ' мм'];
+                $parts[] = [$w, $d, 'дъно ' . $mm($w) . '×' . $mm($d) . ' мм'];
             }
-            // корпус, огънат от едно парче: разгънатата заготовка (ширина + 2 × височина) по късата страна на листа
-            if ($w + 2 * $h > $S || $d > $L) {
-                return ['fits' => false, 'part' => 'разгъната заготовка ' . $mm($w + 2 * $h) . ' мм (листът е ' . $mm($S) . ' мм)'];
-            }
-            return ['fits' => true, 'part' => ''];
     }
+    foreach ($parts as [$a, $b, $label]) {
+        if (!$fits($a, $b)) return ['fits' => false, 'part' => $label];
+    }
+    return ['fits' => true, 'part' => ''];
 }

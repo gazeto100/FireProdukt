@@ -26,6 +26,8 @@ function custom_limits_from_post(): array
 
 $types = db_all('SELECT id, code, name FROM product_types ORDER BY sort, id');
 $shapes = model_shapes();
+$constructions = ['panels' => 'отделни панели', 'bent' => 'огънат корпус от едно парче'];
+$constr = fn() => isset($constructions[$_POST['construction'] ?? '']) ? (string)$_POST['construction'] : 'panels';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int)($_POST['id'] ?? 0);
@@ -35,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($id && ([$lim, $limErr] = custom_limits_from_post()) && $limErr) {
         flash($limErr, 'err');
     } elseif ($id) {
-        db()->prepare('UPDATE forms SET name = ?, description = ?, sort = ?, active = ?, custom_enabled = ?, w_min = ?, w_max = ?, d_min = ?, d_max = ?, h_min = ?, h_max = ?, step_cm = ?, max_h_ratio = ?, custom_fixed = ? WHERE id = ?')
-            ->execute([mb_substr($name, 0, 100), trim((string)($_POST['description'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0), isset($_POST['active']) ? 1 : 0,
+        db()->prepare('UPDATE forms SET name = ?, description = ?, sort = ?, active = ?, construction = ?, custom_enabled = ?, w_min = ?, w_max = ?, d_min = ?, d_max = ?, h_min = ?, h_max = ?, step_cm = ?, max_h_ratio = ?, custom_fixed = ? WHERE id = ?')
+            ->execute([mb_substr($name, 0, 100), trim((string)($_POST['description'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0), isset($_POST['active']) ? 1 : 0, $constr(),
                 $lim['custom_enabled'], $lim['w_min'], $lim['w_max'], $lim['d_min'], $lim['d_max'], $lim['h_min'], $lim['h_max'], $lim['step_cm'], $lim['max_h_ratio'], $lim['custom_fixed'], $id]);
         flash('Формата е запазена.' . (isset($_POST['active']) ? '' : ' Тя е скрита – размерите ѝ не се показват в конфигуратора и на началната страница.'));
     } else {
@@ -49,9 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('Изберете вид и форма за рисуване.', 'err');
         } else {
             $dd = form_custom_defaults()[$shape] ?? form_custom_defaults()['box'];
-            db()->prepare('INSERT INTO forms (code, type_id, name, shape, description, sort, active, custom_enabled, w_min, w_max, d_min, d_max, h_min, h_max, max_h_ratio, custom_fixed)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?)')
-                ->execute(array_merge([$code, $type, mb_substr($name, 0, 100), $shape, trim((string)($_POST['description'] ?? '')) ?: null, (int)($_POST['sort'] ?? 50)], $dd));
+            db()->prepare('INSERT INTO forms (code, type_id, name, shape, construction, description, sort, active, custom_enabled, w_min, w_max, d_min, d_max, h_min, h_max, max_h_ratio, custom_fixed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?)')
+                ->execute(array_merge([$code, $type, mb_substr($name, 0, 100), $shape, $constr(), trim((string)($_POST['description'] ?? '')) ?: null, (int)($_POST['sort'] ?? 50)], $dd));
             flash('Формата е добавена. Създайте ѝ размери в „Модели → Нов модел“.');
         }
     }
@@ -77,6 +79,7 @@ admin_header('Форми', 'forms');
       <label>Име<input name="name" value="<?= e($fm['name']) ?>" required></label>
       <label class="grow">Описание<input name="description" value="<?= e($fm['description']) ?>"></label>
       <label class="narrow">Ред<input name="sort" type="number" value="<?= (int)$fm['sort'] ?>"></label>
+      <label>Конструкция<select name="construction"><?php foreach ($constructions as $ck => $cl): ?><option value="<?= $ck ?>" <?= ($fm['construction'] ?? 'panels') === $ck ? 'selected' : '' ?>><?= e($cl) ?></option><?php endforeach; ?></select></label>
       <label class="check"><input type="checkbox" name="active" value="1" <?= $fm['active'] ? 'checked' : '' ?>> Показва се</label>
       <button class="a-btn a-btn-ghost">Запази</button>
     </div>
@@ -91,7 +94,7 @@ admin_header('Форми', 'forms');
         <label class="lim1">Височина ≤ × ширината<input name="max_h_ratio" type="number" step="0.05" min="0.1" value="<?= e($fm['max_h_ratio']) ?>"></label>
         <label class="lim1">Фиксирана сума, <?= e(setting('currency', '€')) ?><input name="custom_fixed" type="number" step="1" min="0" value="<?= e($fm['custom_fixed']) ?>"></label>
       </div>
-      <p class="muted small">Цена за размер по избор = (площ на листа m² × цена на m² на материала + фиксираната сума) × (1 + надценката от „Настройки“) + екстрите. При кръгли форми се задава само диаметър и височина; при квадратни – ширина (= дълбочина) и височина.</p>
+      <p class="muted small">Конструкция: при „отделни панели“ всяка стена (ширина × височина) и дъното (ширина × дълбочина) трябва да се побират в листа поотделно; при „огънат корпус от едно парче“ – и разгънатата заготовка (ширина + 2 × височина) по късата страна на листа. Кръглата купа винаги се проверява по обиколката. Иначе клиентът вижда „изработва се от две части“. Цена за размер по избор = (площ на листа m² × цена на m² на материала + фиксираната сума) × (1 + надценката от „Настройки“) + екстрите. При кръгли форми се задава само диаметър и височина; при квадратни – ширина (= дълбочина) и височина.</p>
     </details>
   </form>
 <?php endforeach; ?>
@@ -109,6 +112,7 @@ admin_header('Форми', 'forms');
       <label>Как се рисува<select name="shape"><?php foreach ($shapes as $k => $l): ?><option value="<?= e($k) ?>"><?= e($l) ?></option><?php endforeach; ?></select></label>
     </div>
     <label>Описание<input name="description"></label>
+    <label>Конструкция<select name="construction"><?php foreach ($constructions as $ck => $cl): ?><option value="<?= $ck ?>"><?= e($cl) ?></option><?php endforeach; ?></select></label>
     <label>Ред<input name="sort" type="number" value="50"></label>
     <button class="a-btn">Добави</button>
   </form>

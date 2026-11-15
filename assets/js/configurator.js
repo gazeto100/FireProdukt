@@ -116,7 +116,7 @@
     res.weight = G.calcWeight(m, sel);
     // бележки за офертата: палет (за всеки модел над прага) и две части (размер по избор извън листа)
     res.pallet = res.weight.kg > SET.pallet_kg;
-    res.sheet = m.custom ? G.sheetFit(m, SET) : { fits: true, part: '' };
+    res.sheet = m.custom ? G.sheetFit(m, SET, fm.construction) : { fits: true, part: '' };
     res.legCm = renderParam('legs', 'leg_cm', 0);
     res.finish = renderParam('material', 'finish', 'inox');
     return res;

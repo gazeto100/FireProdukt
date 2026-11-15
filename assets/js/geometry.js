@@ -199,29 +199,38 @@
     return { dims: out, messages: msgs };
   }
 
-  /** Побиране на плоските детайли в листа; S = settings (sheet_w_mm, sheet_h_mm). Връща {fits, part} */
-  function sheetFit(m, S) {
+  /** Побиране на плоските детайли в листа; S = settings (sheet_w_mm, sheet_h_mm);
+   *  construction: 'panels' (отделни панели, по подразбиране) или 'bent' (огънат корпус от едно парче). Връща {fits, part} */
+  function sheetFit(m, S, construction) {
     var L = Math.max(S.sheet_w_mm, S.sheet_h_mm), Sh = Math.min(S.sheet_w_mm, S.sheet_h_mm);
     var fits = function (a, b) { return (a <= L && b <= Sh) || (a <= Sh && b <= L); };
     var w = m.w * 10, d = m.d * 10, h = m.h * 10, mm = function (v) { return Math.round(v); };
-    if (m.shape === 'hex' || m.shape === 'octagon') {
-      var side = m.shape === 'hex' ? w / 2 : w * Math.sin(Math.PI / 8);
-      if (!fits(side, h)) return { fits: false, part: 'стена ' + mm(side) + '×' + mm(h) + ' мм' };
-      if (!fits(w, w)) return { fits: false, part: 'дъно Ø' + mm(w) + ' мм' };
-      return { fits: true, part: '' };
-    }
-    if (m.shape === 'cross') return fits(w, h) ? { fits: true, part: '' } : { fits: false, part: 'плоча ' + mm(w) + '×' + mm(h) + ' мм' };
+    var bent = construction === 'bent', parts = [];
     if (m.shape === 'ringbowl') {
       var circ = Math.PI * 0.72 * w;
-      if (circ > L) return { fits: false, part: 'пръстен с обиколка ' + mm(circ) + ' мм' };
-      if (w > Sh) return { fits: false, part: 'купа Ø' + mm(w) + ' мм' };
-      return { fits: true, part: '' };
+      if (circ > L) return { fits: false, part: 'пръстен с обиколка ' + mm(circ) + ' мм (листът е ' + mm(L) + ' мм)' };
+      parts.push([w, w, 'дъно на купата Ø' + mm(w) + ' мм']);
+    } else if (m.shape === 'cross') {
+      parts.push([w, h, 'плоча ' + mm(w) + '×' + mm(h) + ' мм']);
+    } else if (m.shape === 'hex' || m.shape === 'octagon') {
+      var n = m.shape === 'hex' ? 6 : 8, side = m.shape === 'hex' ? w / 2 : w * Math.sin(Math.PI / 8);
+      if (bent) parts.push([n * side, h, 'разгъната заготовка ' + mm(n * side) + '×' + mm(h) + ' мм']);
+      else parts.push([side, h, 'стена ' + mm(side) + '×' + mm(h) + ' мм']);
+      parts.push([w, w, 'дъно ' + mm(w) + '×' + mm(w) + ' мм']);
+    } else {
+      var wallW = m.shape === 'trapezoid' ? w + 2 * 0.22 * h : w;
+      if (bent) {
+        if (w + 2 * h > Sh || d > L) return { fits: false, part: 'разгъната заготовка ' + mm(w + 2 * h) + ' мм (късата страна на листа е ' + mm(Sh) + ' мм)' };
+        parts.push([wallW, h, 'стена ' + mm(wallW) + '×' + mm(h) + ' мм']);
+      } else {
+        parts.push([wallW, h, 'стена ' + mm(wallW) + '×' + mm(h) + ' мм']);
+        parts.push([d, h, 'стена ' + mm(d) + '×' + mm(h) + ' мм']);
+        parts.push([w, d, 'дъно ' + mm(w) + '×' + mm(d) + ' мм']);
+      }
     }
-    var wallW = m.shape === 'trapezoid' ? w + 2 * 0.22 * h : w, parts = [[wallW, h, 'стена'], [d, h, 'стена'], [w, d, 'дъно']];
     for (var i = 0; i < parts.length; i++) {
-      if (!fits(parts[i][0], parts[i][1])) return { fits: false, part: parts[i][2] + ' ' + mm(parts[i][0]) + '×' + mm(parts[i][1]) + ' мм' };
+      if (!fits(parts[i][0], parts[i][1])) return { fits: false, part: parts[i][2] };
     }
-    if (w + 2 * h > Sh || d > L) return { fits: false, part: 'разгъната заготовка ' + mm(w + 2 * h) + ' мм (листът е ' + mm(Sh) + ' мм)' };
     return { fits: true, part: '' };
   }
 

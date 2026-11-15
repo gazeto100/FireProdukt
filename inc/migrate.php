@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 function run_migrations(): void
 {
@@ -55,6 +55,12 @@ function run_migrations(): void
             // етап 3, част В: размер по избор, цена на m², формат на листа, праг за палет
             require_once __DIR__ . '/migrate_v6.php';
             migrate_v6();
+        }
+        if ($v < 7) {
+            // конструкция на формата: отделни панели (по подразбиране) или огънат корпус от едно парче
+            if (!db_all("SHOW COLUMNS FROM forms LIKE 'construction'")) {
+                db()->exec("ALTER TABLE forms ADD COLUMN construction ENUM('panels','bent') NOT NULL DEFAULT 'panels' AFTER shape");
+            }
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {
