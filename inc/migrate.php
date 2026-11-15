@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function run_migrations(): void
 {
@@ -45,6 +45,11 @@ function run_migrations(): void
             }
             // max_chars вече е само технически таван
             db()->exec('UPDATE models SET max_chars = 40');
+        }
+        if ($v < 5) {
+            // етап 3, част Б: форми и размери, нови форми, перфорация, кортен, екстри с правила
+            require_once __DIR__ . '/migrate_v5.php';
+            migrate_v5();
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {

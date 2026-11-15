@@ -91,15 +91,17 @@
     var walls = G.decoratedWalls(m, sides);
     var minMm = G.minLetterFor(parseFloat(renderParam('material', 'thickness_mm', 2)) || 2, SET);
     var res = { m: m, text: text, lines: lines, fontKey: fontKey, sides: sides, pattern: pattern, walls: walls, fit: null, error: '', minMm: minMm };
+    var hasOrn = !!pattern && pattern !== 'perf'; // перфорацията е около надписа и не заема отделна зона
     if (text) {
       // единственото правило, което спира надписа, е минималната височина на буквата
-      var chk = G.checkText(lines, fontKey, walls, !!pattern, minMm, FONTS, L);
+      var chk = G.checkText(lines, fontKey, walls, hasOrn, minMm, FONTS, L, m.shape);
       res.fit = chk.fit;
       res.error = chk.error || '';
       res.errorType = chk.kind === 'ok' ? '' : chk.kind;
       res.split = chk.split;
-      if (chk.kind === 'small') res.betterFont = bestFont(m, lines, walls, !!pattern, fontKey);
+      if (chk.kind === 'small') res.betterFont = bestFont(m, lines, walls, hasOrn, fontKey);
     }
+    res.perfDensity = renderParam('ornament', 'density', 'dense');
     var sel = selected(m);
     var isDec = !!text || !!pattern;
     res.decoratedCount = isDec ? walls.length : 0;
@@ -114,7 +116,7 @@
   function bestFont(m, text, walls, hasOrn, current) {
     var best = null, bestMm = -1, curMm = -1;
     (modelOptions(m).font || []).forEach(function (x) {
-      var fit = G.textFit(text, x.opt.render.font, walls, hasOrn, FONTS, L);
+      var fit = G.textFit(text, x.opt.render.font, walls, hasOrn, FONTS, L, m.shape);
       if (!fit) return;
       if (x.opt.render.font === current) curMm = fit.letter_mm;
       if (fit.letter_mm > bestMm) { bestMm = fit.letter_mm; best = { code: x.opt.code, name: x.opt.name, mm: fit.letter_mm }; }
@@ -130,7 +132,7 @@
     });
     var o = {
       model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey, fonts: FONTS,
-      pattern: r.pattern, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name
+      pattern: r.pattern, perfDensity: r.perfDensity, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name
     };
     for (var k in extra || {}) o[k] = extra[k];
     return o;
@@ -150,11 +152,67 @@
       (hint ? '<small>' + esc(hint) + '</small>' : '') + '</span></span></label>';
   }
 
-  function ornamentIcon(pattern) {
+  function ornamentIcon(render) {
+    var pattern = render.pattern;
     if (!pattern) return '<span class="sw sw-none"></span>';
-    var d = window.FPRender.patterns[pattern](4, 6, 92, 28);
-    return '<svg class="sw sw-orn" viewBox="0 0 100 40" aria-hidden="true"><path d="' + d + '"/></svg>';
+    var d = pattern === 'perf' ? window.FPRender.perf(0, 0, 400, 160, render.density) : window.FPRender.patterns[pattern](4, 6, 92, 28);
+    return '<svg class="sw sw-orn" viewBox="' + (pattern === 'perf' ? '0 0 400 160' : '0 0 100 40') + '" aria-hidden="true"><path d="' + d + '"/></svg>';
   }
+
+  /* ---------- форми и размери ---------- */
+  function formOf(m) { return CAT.forms.filter(function (f) { return f.code === m.form; })[0]; }
+  function formsOfType(t) { return CAT.forms.filter(function (f) { return f.type === t; }); }
+  function sizeText(m) {
+    var round = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(m.shape) >= 0;
+    return round ? 'Ø' + num(m.w) + ' × ' + num(m.h) + ' см' : num(m.w) + ' × ' + num(m.d) + ' × ' + num(m.h) + ' см';
+  }
+  /** „от 40 до 60 см“ / „Ø60 см“ – по най-голямата страна */
+  function formRange(f) {
+    var ms = f.models.map(function (c) { return CAT.models.filter(function (m) { return m.code === c; })[0]; }).filter(Boolean);
+    var ws = ms.map(function (m) { return m.w; }), mn = Math.min.apply(null, ws), mx = Math.max.apply(null, ws);
+    var pre = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(f.shape) >= 0 ? 'Ø' : '';
+    return mn === mx ? pre + num(mn) + ' см' : 'от ' + pre + num(mn) + ' до ' + pre + num(mx) + ' см';
+  }
+
+  /* ---------- правила между екстрите (от данните) ---------- */
+  function optByCode(group, code) {
+    for (var id in CAT.options) { if (CAT.options[id].group === group && CAT.options[id].code === code) return CAT.options[id]; }
+    return null;
+  }
+  function isSelected(o) {
+    return groupsByCode[o.group] && groupsByCode[o.group].multi ? state.extras.indexOf(o.code) >= 0 : state.opts[o.group] === o.code;
+  }
+  /** Неизпълнено изискване на опцията (напр. термометър без капак) -> целевата опция, иначе null */
+  function missingRequirement(o) {
+    var miss = null;
+    (CAT.rules || []).forEach(function (r) {
+      if (r.option === o.id && r.kind === 'requires' && CAT.options[r.target] && !isSelected(CAT.options[r.target])) miss = CAT.options[r.target];
+    });
+    return miss;
+  }
+  /** Опциите, които се изключват с дадената (в двете посоки) */
+  function excludedBy(o) {
+    var out = [];
+    (CAT.rules || []).forEach(function (r) {
+      if (r.kind !== 'excludes') return;
+      if (r.option === o.id && CAT.options[r.target]) out.push(CAT.options[r.target]);
+      if (r.target === o.id && CAT.options[r.option]) out.push(CAT.options[r.option]);
+    });
+    return out;
+  }
+  /** Махa избрани екстри, чието изискване вече не е изпълнено; връща имената им */
+  function dropUnmet() {
+    var dropped = [], changed = true;
+    while (changed) {
+      changed = false;
+      state.extras.slice().forEach(function (c) {
+        var o = optByCode('extras', c);
+        if (o && missingRequirement(o)) { state.extras = state.extras.filter(function (x) { return x !== c; }); dropped.push(o.name); changed = true; }
+      });
+    }
+    return dropped;
+  }
+  var SUBGROUPS = [['cook', 'За печене'], ['comfort', 'За удобство'], ['carry', 'За пренасяне'], ['', 'Други']];
 
   function build() {
     var m = model(), mo = modelOptions(m), html = '';
@@ -165,11 +223,16 @@
         return optCard('type', t.code, state.type === t.code, t.name, t.hint, 'opt-big');
       }).join('') + '</div>');
     }
-    // 2. Модел
-    html += stepHtml('st-model', 'Модел', '<div class="opts opts-models">' + modelsOfType(state.type).map(function (x) {
-      var dims = x.shape === 'hex' ? 'Ø' + num(x.w) + ' × ' + num(x.h) + ' см' : num(x.w) + ' × ' + num(x.d) + ' × ' + num(x.h) + ' см';
-      var thumb = '<span class="thumb" data-thumb="' + esc(x.code) + '"></span>';
-      return optCard('model', x.code, state.model === x.code, x.name, dims, 'opt-model', thumb);
+    // 2. Форма (карти с рисунка) и 3. Размер (ред от бутони)
+    var curForm = formOf(m);
+    html += stepHtml('st-form', 'Форма', '<div class="opts opts-models">' + formsOfType(state.type).map(function (f) {
+      var thumb = '<span class="thumb" data-thumb="' + esc(f.models[0]) + '"></span>';
+      return optCard('form', f.code, curForm && curForm.code === f.code, f.name, formRange(f), 'opt-model', thumb);
+    }).join('') + '</div>');
+    var sizes = (curForm ? curForm.models : [m.code]).map(function (c) { return CAT.models.filter(function (x) { return x.code === c; })[0]; }).filter(Boolean);
+    html += stepHtml('st-size', 'Размер', '<div class="sizes">' + sizes.map(function (x) {
+      return '<label class="size-btn"><input type="radio" name="model" value="' + esc(x.code) + '"' + (state.model === x.code ? ' checked' : '') + '>' +
+        '<span><b>' + esc(x.size_label || x.name) + '</b><small>' + esc(sizeText(x)) + '</small></span></label>';
     }).join('') + '</div>');
     // 3. Материал
     if (mo.material) {
@@ -205,14 +268,23 @@
     // 6. Орнамент
     if (mo.ornament) {
       html += stepHtml('st-ornament', groupsByCode.ornament.name, '<div class="opts opts-orn">' + mo.ornament.map(function (x) {
-        return optCard('ornament', x.opt.code, state.opts.ornament === x.opt.code, x.opt.name, '', 'opt-orn', ornamentIcon(x.opt.render.pattern));
+        return optCard('ornament', x.opt.code, state.opts.ornament === x.opt.code, x.opt.name, '', 'opt-orn', ornamentIcon(x.opt.render));
       }).join('') + '</div>');
     }
-    // 7. Екстри
+    // 7. Екстри – групирани; недостъпните (неизпълнено изискване) са изключени с обяснение
     if (mo.extras) {
-      html += stepHtml('st-extras', groupsByCode.extras.name, '<div class="opts">' + mo.extras.map(function (x) {
-        return optCard('extras', x.opt.code, state.extras.indexOf(x.opt.code) >= 0, x.opt.name, x.opt.hint, 'opt-check', '<span class="tick"></span>', 'checkbox');
-      }).join('') + '</div>', groupsByCode.extras.hint);
+      var ebody = '';
+      SUBGROUPS.forEach(function (sg) {
+        var list = mo.extras.filter(function (x) { return (x.opt.subgroup || '') === sg[0]; });
+        if (!list.length) return;
+        ebody += '<p class="sub">' + esc(sg[1]) + '</p><div class="opts">' + list.map(function (x) {
+          var miss = missingRequirement(x.opt), hint = miss ? 'Само с „' + miss.name + '“' : x.opt.hint;
+          return optCard('extras', x.opt.code, state.extras.indexOf(x.opt.code) >= 0, x.opt.name, hint, 'opt-check' + (miss ? ' opt-off' : ''), '<span class="tick"></span>', 'checkbox')
+            .replace('type="checkbox"', 'type="checkbox"' + (miss ? ' disabled' : ''));
+        }).join('') + '</div>';
+      });
+      ebody += '<p class="extras-note" id="extrasNote" role="status" hidden></p>';
+      html += stepHtml('st-extras', groupsByCode.extras.name, ebody, groupsByCode.extras.hint);
     }
 
     stepsEl.innerHTML = html;
@@ -230,7 +302,10 @@
     $$('[data-thumb]').forEach(function (el) {
       var m = CAT.models.filter(function (x) { return x.code === el.getAttribute('data-thumb'); })[0];
       if (!m) return;
-      el.innerHTML = window.FPRender.render({ model: m, finish: 'inox', legCm: 0, layout: L, id: 'th' + m.id, extras: {}, pattern: null, decoratedCount: 1 });
+      // материалът по подразбиране на модела (новите огнища са черна стомана)
+      var mat = (modelOptions(m).material || []).filter(function (x) { return x.mo.default; })[0];
+      var legs = (modelOptions(m).legs || []).filter(function (x) { return x.mo.default; })[0];
+      el.innerHTML = window.FPRender.render({ model: m, finish: mat ? mat.opt.render.finish : 'inox', legCm: legs ? legs.opt.render.leg_cm : 0, layout: L, id: 'th' + m.id, extras: {}, pattern: null, decoratedCount: 1 });
     });
   }
 
@@ -307,22 +382,48 @@
   /* ---------- събития ---------- */
   stepsEl.addEventListener('change', function (e) {
     var t = e.target, name = t.name;
+    var notes = [];
     if (name === 'type') {
       state.type = t.value;
-      var first = modelsOfType(state.type)[0];
-      if (first) state.model = first.code;
+      var ff = formsOfType(state.type)[0];
+      if (ff) state.model = ff.models[0];
       normalizeState(); build(); track('model_select');
+      return;
+    } else if (name === 'form') {
+      var fm = CAT.forms.filter(function (x) { return x.code === t.value; })[0];
+      if (fm) state.model = fm.models[0];
+      normalizeState(); build(); track('model_select');
+      return;
     } else if (name === 'model') {
       state.model = t.value;
       normalizeState(); build(); track('model_select');
+      return;
     } else if (name === 'extras') {
-      if (t.checked) { if (state.extras.indexOf(t.value) < 0) state.extras.push(t.value); }
-      else state.extras = state.extras.filter(function (c) { return c !== t.value; });
-      update();
+      if (t.checked) {
+        if (state.extras.indexOf(t.value) < 0) state.extras.push(t.value);
+        // изключващите се екстри се махат автоматично
+        var o = optByCode('extras', t.value);
+        excludedBy(o).forEach(function (x) {
+          if (x.group === 'extras' && state.extras.indexOf(x.code) >= 0) {
+            state.extras = state.extras.filter(function (c) { return c !== x.code; });
+            notes.push('„' + x.name + '“ е махнат – не може заедно с „' + o.name + '“.');
+          }
+        });
+      } else {
+        state.extras = state.extras.filter(function (c) { return c !== t.value; });
+      }
     } else if (groupsByCode[name]) {
       state.opts[name] = t.value;
+    }
+    // екстри, чието изискване вече не е изпълнено (напр. термометър без капак)
+    dropUnmet().forEach(function (n) { notes.push('„' + n + '“ е махнат – изисква опция, която вече не е избрана.'); });
+    if ((CAT.rules || []).length && (name === 'extras' || name === 'legs')) {
+      build();
+    } else {
       update();
     }
+    var note = $('#extrasNote');
+    if (note) { note.hidden = !notes.length; note.textContent = notes.join(' '); }
   });
 
   stepsEl.addEventListener('click', function (e) {
@@ -597,18 +698,25 @@
     state.model = first.code;
   }
   // ?model=код (напр. от галерията на началната страница) има предимство
-  var qModel = new URLSearchParams(location.search).get('model');
+  var qs = new URLSearchParams(location.search), qModel = qs.get('model'), qForm = qs.get('form');
+  // ?form=код (карта от началната страница) – първият размер на формата, ако текущият модел не е от нея
+  if (qForm && !qModel) {
+    var qf = CAT.forms.filter(function (x) { return x.code === qForm; })[0];
+    if (qf && qf.models.indexOf(state.model) < 0) qModel = qf.models[0];
+  }
   if (qModel && CAT.models.some(function (m) { return m.code === qModel; }) && qModel !== state.model) {
     state.model = qModel;
     state.opts = {};
     state.extras = [];
   }
-  // параметърът важи само веднъж: при презареждане да не изтрива избора на клиента
-  if (qModel && window.history && history.replaceState) {
+  // параметрите важат само веднъж: при презареждане да не изтриват избора на клиента
+  if ((qs.get('model') || qForm) && window.history && history.replaceState) {
     var u = new URL(location.href);
     u.searchParams.delete('model');
+    u.searchParams.delete('form');
     history.replaceState(null, '', u.pathname + u.search + u.hash);
   }
+  if (!model()) state.model = CAT.models[0].code;
   state.type = model().type;
   normalizeState();
   qtyInput.value = state.qty;

@@ -40,20 +40,39 @@ page_header('', [
     </div>
   </section>
 
-  <section class="wrap gallery-sec">
+  <?php
+  // Една карта за форма (не за всеки размер), групирани по вид; нова форма от админа се появява автоматично
+  $groupTitles = ['firepit' => 'Огнища', 'grill' => 'Мангали и скари'];
+  $byCode = array_column($cat['models'], null, 'code');
+  $roundShapes = ['hex', 'octagon', 'cross', 'ringbowl'];
+  ?>
+  <section class="wrap gallery-sec" id="models">
     <h2 class="sec-title">Модели</h2>
-    <p class="sec-sub">Изберете основа, а размера на надписа, материала и екстрите добавяте в конфигуратора.</p>
-    <div class="gallery" id="gallery">
-      <?php foreach ($cat['models'] as $m): ?>
-        <a class="g-card" href="<?= e(url('configurator.php?model=' . rawurlencode($m['code']))) ?>" data-model="<?= e($m['code']) ?>">
-          <span class="g-img"></span>
-          <span class="g-txt">
-            <b><?= e($m['name']) ?></b>
-            <small><?= $m['shape'] === 'hex' ? 'Ø' . e(fmt_num($m['w'])) . ' × ' . e(fmt_num($m['h'])) : e(fmt_num($m['w'])) . ' × ' . e(fmt_num($m['d'])) . ' × ' . e(fmt_num($m['h'])) ?> см</small>
-            <span class="g-link">Сглоби този модел →</span>
-          </span>
-        </a>
-      <?php endforeach; ?>
+    <p class="sec-sub">Изберете форма – размера, материала, надписа и екстрите добавяте в конфигуратора.</p>
+    <?php foreach ($cat['types'] as $t): $forms = array_values(array_filter($cat['forms'], fn($f) => $f['type'] === $t['code'])); if (!$forms) continue; ?>
+      <h3 class="group-title"><?= e($groupTitles[$t['code']] ?? $t['name']) ?></h3>
+      <div class="gallery gallery-forms">
+        <?php foreach ($forms as $fm):
+            $ms = array_values(array_filter(array_map(fn($c) => $byCode[$c] ?? null, $fm['models'])));
+            $ws = array_column($ms, 'w'); $pre = in_array($fm['shape'], $roundShapes, true) ? 'Ø' : '';
+            $range = min($ws) == max($ws) ? $pre . fmt_num(min($ws)) . ' см' : 'от ' . $pre . fmt_num(min($ws)) . ' до ' . $pre . fmt_num(max($ws)) . ' см';
+            $rep = $ms[intdiv(count($ms) - 1, 2)]['code']; ?>
+          <a class="g-card g-form" href="<?= e(url('configurator.php?form=' . rawurlencode($fm['code']))) ?>" data-model="<?= e($rep) ?>">
+            <span class="g-img"></span>
+            <span class="g-txt">
+              <b><?= e($fm['name']) ?></b>
+              <small><?= e($range) ?></small>
+              <span class="btn btn-sm g-btn">Сглоби</span>
+            </span>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    <?php endforeach; ?>
+
+    <div class="promo-projects">
+      <h2>За хотели, ресторанти и къщи за гости</h2>
+      <p>Големи купи, огнища маси, пейки около огъня и колони с вашето лого – по проект.</p>
+      <a class="btn" href="<?= e(url('za-hoteli.php')) ?>">Вижте моделите за обекти</a>
     </div>
   </section>
 
@@ -67,13 +86,6 @@ page_header('', [
     <p class="center"><a class="btn btn-lg" href="<?= e(url('configurator.php')) ?>">Сглоби своя модел</a></p>
   </section>
 
-  <section class="wrap">
-    <div class="promo-projects">
-      <h2>За хотели, ресторанти и къщи за гости</h2>
-      <p>Големи купи, огнища маси, пейки около огъня и колони с вашето лого – по проект.</p>
-      <a class="btn" href="<?= e(url('za-hoteli.php')) ?>">Вижте моделите за обекти</a>
-    </div>
-  </section>
 </main>
 <script>window.FP_CATALOG = <?= json_encode($cat, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;</script>
 <?php page_footer(['scripts' => ['js/geometry.js', 'js/render.js', 'js/home.js']]); ?>

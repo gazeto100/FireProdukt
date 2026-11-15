@@ -9,17 +9,27 @@
   var SAMPLES = ['ИВАНОВИ', 'ВИЛА', 'ОГЪН', 'ПЕТРОВИ', 'СКАРА'];
   var PATTERNS = ['flames', 'pines', 'mountains', 'shevitsa'];
 
+  /** Подразбиращата се стойност на група за модела (напр. материал, крачета) */
+  function def(m, group, key, fallback) {
+    for (var k = 0; k < m.options.length; k++) {
+      var o = CAT.options[m.options[k].id];
+      if (o && o.group === group && m.options[k].default) return o.render[key] !== undefined ? o.render[key] : fallback;
+    }
+    return fallback;
+  }
+
   function scene(m, i, opts) {
     opts = opts || {};
-    var pattern = opts.pattern !== undefined ? opts.pattern : PATTERNS[i % PATTERNS.length];
-    var sides = opts.sides || 2, walls = G.decoratedWalls(m, sides), text = '', fit = null;
+    var simple = ['pedestal', 'cross', 'ringbowl', 'trapezoid'].indexOf(m.shape) >= 0;
+    var pattern = opts.pattern !== undefined ? opts.pattern : simple ? null : PATTERNS[i % PATTERNS.length];
+    var sides = opts.sides || (G.modelWalls(m).length > 1 ? 2 : 1), walls = G.decoratedWalls(m, sides), text = '', fit = null;
     var list = opts.text ? [opts.text] : SAMPLES.slice(i).concat(SAMPLES.slice(0, i));
     for (var k = 0; k < list.length; k++) {
-      var f = G.textFit(list[k], 'russo', walls, !!pattern, FONTS, L);
+      var f = G.textFit(list[k], 'russo', walls, !!pattern, FONTS, L, m.shape);
       if (f && f.letter_mm >= MIN) { text = list[k]; fit = f; break; }
     }
     return R.render({
-      model: m, finish: opts.finish || (i % 3 === 1 ? 'black' : 'inox'), legCm: m.shape === 'grill' ? 10 : 0,
+      model: m, finish: opts.finish || def(m, 'material', 'finish', 'inox'), legCm: def(m, 'legs', 'leg_cm', 0),
       text: text, fit: fit, fontKey: 'russo', fonts: FONTS, pattern: pattern, decoratedCount: walls.length,
       extras: m.shape === 'grill' ? { grate: true } : {}, layout: L, id: (opts.id || 'g') + i, title: m.name
     });

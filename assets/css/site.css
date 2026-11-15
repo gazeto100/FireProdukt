@@ -307,3 +307,33 @@ h1, h2, h3 { font-family: var(--head); font-weight: 400; line-height: 1.2; margi
 .txt-status.bad { color: var(--err); font-weight: 600; }
 .txt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .txt-actions .btn { white-space: normal; text-align: left; }
+
+/* Размер: ред от бутони */
+.sizes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.size-btn { position: relative; cursor: pointer; }
+.size-btn input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.size-btn span { display: flex; flex-direction: column; min-width: 92px; padding: 9px 14px; border: 2px solid var(--line); border-radius: 12px; background: #fff; line-height: 1.25; }
+.size-btn b { font-size: .95rem; }
+.size-btn small { color: var(--ink-2); font-size: .78rem; }
+.size-btn input:checked + span { border-color: var(--ember); box-shadow: 0 0 0 3px rgba(226,98,12,.15); }
+.size-btn input:focus-visible + span { outline: 3px solid #1a73e8; outline-offset: 2px; }
+/* Екстри: недостъпни и бележка */
+.opt-off { opacity: .55; cursor: not-allowed; }
+.opt-off .opt-in { background: #f6f3ef; }
+.extras-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #fff4ec; color: #8a3c00; font-size: .88rem; }
+
+/* Начална страница: карти по форма, по две на ред на телефон */
+.group-title { font-size: 1.15rem; margin: 18px 0 10px; }
+.gallery-forms { grid-template-columns: 1fr 1fr; gap: 10px; }
+.gallery-forms .g-img { height: 128px; padding: 6px; }
+.gallery-forms .g-txt { padding: 10px 10px 12px; }
+.gallery-forms .g-txt b { font-size: .92rem; line-height: 1.2; }
+.gallery-forms .g-txt small { font-size: .8rem; }
+.g-btn { align-self: flex-start; margin-top: 8px; min-height: 34px; padding: 0 14px; }
+@media (min-width: 700px) { .gallery-forms { grid-template-columns: repeat(3, 1fr); } .gallery-forms .g-img { height: 170px; } }
+@media (min-width: 1000px) { .gallery-forms { grid-template-columns: repeat(4, 1fr); } }
+
+/* елементите на мрежата могат да се свиват (иначе дълъг образец на шрифта разширява колоната) */
+.opts > .opt { min-width: 0; }
+.opt-in, .opt-txt { min-width: 0; }
+.font-sample { display: block; }

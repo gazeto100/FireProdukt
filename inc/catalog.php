@@ -28,6 +28,7 @@ function load_catalog(bool $activeOnly = true): array
             'code' => $o['code'],
             'name' => $o['name'],
             'hint' => $o['hint'],
+            'subgroup' => $o['subgroup'] ?? null,
             'price_type' => $o['price_type'],
             'price_min' => (float)$o['price_min'],
             'price_max' => (float)$o['price_max'],
@@ -43,6 +44,13 @@ function load_catalog(bool $activeOnly = true): array
     }
     unset($t);
 
+    // форми (група размери); неактивна форма скрива всичките си размери
+    $formRows = db_all('SELECT * FROM forms' . $act . ' ORDER BY sort, id');
+    $formById = [];
+    foreach ($formRows as $fr) {
+        $formById[(int)$fr['id']] = $fr;
+    }
+
     $models = [];
     $rows = db_all('SELECT * FROM models' . $act . ' ORDER BY sort, id');
     $compat = db_all('SELECT * FROM model_options');
@@ -54,6 +62,10 @@ function load_catalog(bool $activeOnly = true): array
         $tid = (int)$m['type_id'];
         if (!isset($typeCodes[$tid])) {
             continue; // типът е неактивен
+        }
+        $fid = (int)($m['form_id'] ?? 0);
+        if ($activeOnly && $fid && !isset($formById[$fid])) {
+            continue; // формата е изключена от админа
         }
         $opts = [];
         foreach ($byModel[(int)$m['id']] ?? [] as $c) {
@@ -73,6 +85,8 @@ function load_catalog(bool $activeOnly = true): array
             'code' => $m['code'],
             'type' => $typeCodes[$tid],
             'name' => $m['name'],
+            'form' => isset($formById[$fid]) ? $formById[$fid]['code'] : 'm' . $m['id'],
+            'size_label' => (string)($m['size_label'] ?? ''),
             'shape' => $m['shape'],
             'w' => (float)$m['width_cm'],
             'd' => (float)$m['depth_cm'],
@@ -86,6 +100,31 @@ function load_catalog(bool $activeOnly = true): array
         ];
     }
 
+    // Форми с поне един активен размер (модел без форма става самостоятелна форма)
+    $forms = [];
+    foreach ($models as $m) {
+        $fc = $m['form'];
+        if (!isset($forms[$fc])) {
+            $fr = null;
+            foreach ($formById as $x) {
+                if ($x['code'] === $fc) $fr = $x;
+            }
+            $forms[$fc] = ['code' => $fc, 'name' => $fr['name'] ?? $m['name'], 'type' => $m['type'], 'shape' => $fr['shape'] ?? $m['shape'],
+                'description' => $fr['description'] ?? $m['description'], 'sort' => (int)($fr['sort'] ?? 99), 'models' => []];
+        }
+        $forms[$fc]['models'][] = $m['code'];
+    }
+    $forms = array_values($forms);
+    usort($forms, fn($a, $b) => [$a['type'], $a['sort']] <=> [$b['type'], $b['sort']]);
+
+    // правила между опциите (изключват се / изискват) – само между активни опции
+    $rules = [];
+    foreach (db_all('SELECT option_id, kind, target_id FROM option_rules') as $r) {
+        if (isset($options[(int)$r['option_id']], $options[(int)$r['target_id']])) {
+            $rules[] = ['option' => (int)$r['option_id'], 'kind' => $r['kind'], 'target' => (int)$r['target_id']];
+        }
+    }
+
     // Показваме само типове, които имат поне един активен модел
     $usedTypes = array_unique(array_column($models, 'type'));
     $types = array_values(array_filter($types, fn($t) => in_array($t['code'], $usedTypes, true)));
@@ -95,6 +134,8 @@ function load_catalog(bool $activeOnly = true): array
         'groups' => $groups,
         'options' => $options,
         'models' => $models,
+        'forms' => $forms,
+        'rules' => $rules,
         'settings' => [
             'min_letter_2mm' => (float)setting('min_letter_2mm', '30'),
             'min_letter_3mm' => (float)setting('min_letter_3mm', '35'),

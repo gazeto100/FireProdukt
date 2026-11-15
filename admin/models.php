@@ -31,8 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $types = db_all('SELECT * FROM product_types ORDER BY sort, id');
-$models = db_all('SELECT m.*, t.name AS type_name, (SELECT COUNT(*) FROM model_options mo WHERE mo.model_id = m.id) AS opts
-  FROM models m JOIN product_types t ON t.id = m.type_id ORDER BY t.sort, m.sort, m.id');
+$models = db_all('SELECT m.*, t.name AS type_name, f.name AS form_name, f.active AS form_active, (SELECT COUNT(*) FROM model_options mo WHERE mo.model_id = m.id) AS opts
+  FROM models m JOIN product_types t ON t.id = m.type_id LEFT JOIN forms f ON f.id = m.form_id ORDER BY t.sort, f.sort, m.sort, m.id');
 $shapes = model_shapes();
 
 admin_header('Модели', 'models');
@@ -45,12 +45,12 @@ admin_header('Модели', 'models');
 
 <div class="table-wrap card">
 <table class="grid">
-  <thead><tr><th>Модел</th><th>Вид</th><th>Форма</th><th>Размери, см</th><th>Цена</th><th>Опции</th><th></th></tr></thead>
+  <thead><tr><th>Модел</th><th>Форма › размер</th><th>Форма</th><th>Размери, см</th><th>Цена</th><th>Опции</th><th></th></tr></thead>
   <tbody>
   <?php foreach ($models as $m): ?>
     <tr class="<?= $m['active'] ? '' : 'inactive' ?>">
       <td><a href="model_edit.php?id=<?= (int)$m['id'] ?>"><b><?= e($m['name']) ?></b></a><br><code class="small"><?= e($m['code']) ?></code><?= $m['active'] ? '' : ' <span class="badge">скрит</span>' ?></td>
-      <td><?= e($m['type_name']) ?></td>
+      <td><?= e($m['form_name'] ?? '—') ?> › <b><?= e($m['size_label'] ?? '') ?></b><?= $m['form_name'] !== null && !$m['form_active'] ? ' <span class="badge">формата е скрита</span>' : '' ?></td>
       <td class="small"><?= e(explode(' (', $shapes[$m['shape']] ?? $m['shape'])[0]) ?></td>
       <td><?= $m['shape'] === 'hex' ? 'Ø' . e(fmt_num($m['width_cm'])) . ' × ' . e(fmt_num($m['height_cm'])) : e(fmt_num($m['width_cm'])) . ' × ' . e(fmt_num($m['depth_cm'])) . ' × ' . e(fmt_num($m['height_cm'])) ?></td>
       <td class="nowrap"><?= e(price_range_text((float)$m['price_min'], (float)$m['price_max'])) ?></td>

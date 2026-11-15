@@ -37,6 +37,12 @@
       var s = m.w / 2 * 10;
       return [0, 1, 2, 3, 4, 5].map(function () { return [s, h]; });
     }
+    if (m.shape === 'octagon') {
+      var so = m.w * 10 * Math.sin(Math.PI / 8);
+      return [0, 1, 2, 3, 4, 5, 6, 7].map(function () { return [so, h]; });
+    }
+    if (m.shape === 'cross') return [[m.w * 10 / 2, h]];
+    if (m.shape === 'ringbowl') return [[m.w * 10 * 0.72 * 0.62, h * 0.55]];
     var w = m.w * 10, d = m.d * 10;
     return [[w, h], [d, h], [w, h], [d, h]];
   }
@@ -49,14 +55,14 @@
   }
 
   /** Вертикална зона за надписа с поле от ръба */
-  function textBand(wallH, hasOrn, L) {
-    var b = hasOrn ? L.band_orn_text : L.band_plain;
+  function textBand(wallH, hasOrn, L, shape) {
+    var b = (L.shape_bands && L.shape_bands[shape]) || (hasOrn ? L.band_orn_text : L.band_plain);
     var top = Math.max(b[0] * wallH, L.edge_mm), bottom = Math.min(b[1] * wallH, wallH - L.edge_mm);
     return [top, Math.max(top + 1, bottom)];
   }
 
   /** Побира 1–2 реда в най-тясната декорирана стена (същото като text_fit() в PHP) */
-  function textFit(lines, fontKey, walls, hasOrn, fonts, L) {
+  function textFit(lines, fontKey, walls, hasOrn, fonts, L, shape) {
     var font = fonts.fonts[fontKey];
     if (typeof lines === 'string') lines = textLines(lines, L);
     if (!lines.length || !font || !walls.length) return null;
@@ -76,7 +82,7 @@
     }
     var upm = font.upm, n = lines.length;
     var availW = minW - 2 * L.edge_mm;
-    var band = textBand(wallH, hasOrn, L);
+    var band = textBand(wallH, hasOrn, L, shape);
     var lineH = Math.max(1, yMax - yMin), gap = L.line_gap * font.cap;
     var totalH = n * lineH + (n - 1) * gap;
     var size = Math.min(availW / (Math.max.apply(null, adv) / upm), (band[1] - band[0]) / (totalH / upm));
@@ -101,13 +107,13 @@
    * Единственото правило, което спира надписа: минималната височина (плюс технически таван и позволени знаци).
    * Връща { error, kind: 'ok'|'small'|'chars'|'long', fit, split }
    */
-  function checkText(lines, fontKey, walls, hasOrn, minMm, fonts, L) {
+  function checkText(lines, fontKey, walls, hasOrn, minMm, fonts, L, shape) {
     var text = lines.join('\n');
     if (textLength(text) > L.max_chars) return { kind: 'long', error: 'Надписът е твърде дълъг – до ' + L.max_chars + ' знака.', fit: null, split: null };
     var bad = [];
     chars(text.replace(/\n/g, '')).forEach(function (ch) { if (fonts.allowed.indexOf(ch) < 0 && bad.indexOf(ch) < 0) bad.push(ch); });
     if (bad.length) return { kind: 'chars', error: 'Тези знаци не могат да се изрежат: ' + bad.join(' '), fit: null, split: null };
-    var fit = textFit(lines, fontKey, walls, hasOrn, fonts, L);
+    var fit = textFit(lines, fontKey, walls, hasOrn, fonts, L, shape);
     if (!fit) return { kind: 'chars', error: 'Надписът не може да бъде разположен.', fit: null, split: null };
     if (fit.letter_mm + 0.05 >= minMm) return { kind: 'ok', error: null, fit: fit, split: null };
     var split = lines.length === 1 ? splitTwoLines(lines[0]) : null;
@@ -125,6 +131,12 @@
       var s = w / 2;
       return (3 * Math.sqrt(3) / 2 * s * s + 6 * s * h) / 10000;
     }
+    var r = w / 2;
+    if (m.shape === 'octagon') return (2 * Math.sqrt(2) * r * r + 8 * w * Math.sin(Math.PI / 8) * h) / 10000;
+    if (m.shape === 'trapezoid') { var t = 0.22 * h; return (w * w + 4 * (w + t) * Math.sqrt(h * h + t * t)) / 10000; }
+    if (m.shape === 'pedestal') { var rp = 0.45 * w; return (4 * w * h + w * d + Math.PI * rp * rp * 1.25) / 10000; }
+    if (m.shape === 'cross') return 2 * w * h / 10000;
+    if (m.shape === 'ringbowl') return (Math.PI * r * r * 1.3 + Math.PI * 0.72 * w * 0.55 * h) / 10000;
     return (w * d + 2 * (w + d) * h) / 10000;
   }
 

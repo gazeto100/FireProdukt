@@ -11,11 +11,12 @@ if ($id && !$model) {
 }
 $types = db_all('SELECT id, name FROM product_types ORDER BY sort, id');
 $allModels = db_all('SELECT id, name FROM models ORDER BY sort, id');
+$formsList = db_all('SELECT f.id, f.name, f.shape, t.name AS type_name FROM forms f JOIN product_types t ON t.id = f.type_id ORDER BY t.sort, f.sort');
 $shapes = model_shapes();
 $errors = [];
 
 $v = $model ?: [
-    'type_id' => $types[0]['id'] ?? 0, 'code' => '', 'name' => '', 'shape' => 'box', 'width_cm' => '', 'depth_cm' => '', 'height_cm' => '',
+    'type_id' => $types[0]['id'] ?? 0, 'form_id' => (int)($_GET['form'] ?? 0), 'size_label' => '', 'code' => '', 'name' => '', 'shape' => 'box', 'width_cm' => '', 'depth_cm' => '', 'height_cm' => '',
     'max_chars' => 12, 'price_min' => '', 'price_max' => '', 'sheet_area_m2' => '', 'description' => '', 'sort' => 10, 'active' => 1,
 ];
 
@@ -31,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $v = [
         'type_id' => (int)($_POST['type_id'] ?? 0),
+        'form_id' => (int)($_POST['form_id'] ?? 0) ?: null,
+        'size_label' => mb_substr(trim((string)($_POST['size_label'] ?? '')), 0, 40),
         'code' => trim((string)($_POST['code'] ?? '')),
         'name' => trim((string)($_POST['name'] ?? '')),
         'shape' => (string)($_POST['shape'] ?? 'box'),
@@ -45,9 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'sort' => (int)($_POST['sort'] ?? 0),
         'active' => isset($_POST['active']) ? 1 : 0,
     ];
-    if ($v['shape'] === 'hex') {
-        $v['depth_cm'] = $v['width_cm']; // при шестоъгълника дълбочината = диаметъра
+    if (in_array($v['shape'], ['hex', 'octagon', 'cross', 'ringbowl'], true)) {
+        $v['depth_cm'] = $v['width_cm']; // при кръглите форми дълбочината = диаметъра
     }
+    if ($v['form_id'] && !in_array($v['form_id'], array_map('intval', array_column($formsList, 'id')), true)) $v['form_id'] = null;
     if (!in_array($v['type_id'], array_map('intval', array_column($types, 'id')), true)) $errors[] = 'Изберете вид.';
     if (!preg_match('/^[a-z0-9_]{2,32}$/', $v['code'])) $errors[] = 'Кодът: 2–32 малки латински букви, цифри или _ (напр. sq_xl).';
     elseif (db_one('SELECT id FROM models WHERE code = ? AND id <> ?', [$v['code'], $id])) $errors[] = 'Вече има модел с този код.';
@@ -60,14 +64,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($v['sheet_area_m2'] !== null && ($v['sheet_area_m2'] <= 0 || $v['sheet_area_m2'] > 20)) $errors[] = 'Площта на ламарината трябва да е между 0 и 20 м² (или празно).';
 
     if (!$errors) {
-        $params = [$v['type_id'], $v['code'], mb_substr($v['name'], 0, 100), $v['shape'], $v['width_cm'], $v['depth_cm'], $v['height_cm'],
+        $params = [$v['type_id'], $v['form_id'], $v['size_label'] !== '' ? $v['size_label'] : null, $v['code'], mb_substr($v['name'], 0, 100), $v['shape'], $v['width_cm'], $v['depth_cm'], $v['height_cm'],
             $v['max_chars'], $v['price_min'], $v['price_max'], $v['sheet_area_m2'], $v['description'] !== '' ? mb_substr($v['description'], 0, 500) : null, $v['sort'], $v['active']];
         if ($model) {
             $params[] = $id;
-            db()->prepare('UPDATE models SET type_id=?, code=?, name=?, shape=?, width_cm=?, depth_cm=?, height_cm=?, max_chars=?, price_min=?, price_max=?, sheet_area_m2=?, description=?, sort=?, active=? WHERE id=?')->execute($params);
+            db()->prepare('UPDATE models SET type_id=?, form_id=?, size_label=?, code=?, name=?, shape=?, width_cm=?, depth_cm=?, height_cm=?, max_chars=?, price_min=?, price_max=?, sheet_area_m2=?, description=?, sort=?, active=? WHERE id=?')->execute($params);
             flash('Моделът е запазен.');
         } else {
-            db()->prepare('INSERT INTO models (type_id, code, name, shape, width_cm, depth_cm, height_cm, max_chars, price_min, price_max, sheet_area_m2, description, sort, active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')->execute($params);
+            db()->prepare('INSERT INTO models (type_id, form_id, size_label, code, name, shape, width_cm, depth_cm, height_cm, max_chars, price_min, price_max, sheet_area_m2, description, sort, active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')->execute($params);
             $id = (int)db()->lastInsertId();
             $copy = (int)($_POST['copy_from'] ?? 0);
             if ($copy) {
@@ -108,6 +112,12 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
     <label>Код (латиница)<input name="code" value="<?= e($v['code']) ?>" pattern="[a-z0-9_]{2,32}" required></label>
   </div>
   <label>Име<input name="name" value="<?= e($v['name']) ?>" maxlength="100" required></label>
+  <div class="two">
+    <label>Форма (група размери)
+      <select name="form_id"><option value="0">— самостоятелен модел —</option><?php foreach ($formsList as $fl): ?><option value="<?= (int)$fl['id'] ?>" <?= (int)($v['form_id'] ?? 0) === (int)$fl['id'] ? 'selected' : '' ?>><?= e($fl['type_name'] . ' › ' . $fl['name']) ?></option><?php endforeach; ?></select>
+    </label>
+    <label>Надпис на бутона за размер<input name="size_label" value="<?= e($v['size_label'] ?? '') ?>" maxlength="40" placeholder="напр. M · 50×50×35 или Ø60"></label>
+  </div>
   <label>Форма (как се рисува)
     <select name="shape" id="shape"><?php foreach ($shapes as $k => $label): ?><option value="<?= e($k) ?>" <?= $v['shape'] === $k ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
   </label>
@@ -116,7 +126,7 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
     <label id="dWrap">Дълбочина, см<input name="depth_cm" inputmode="decimal" value="<?= e($num($v['depth_cm'])) ?>"></label>
     <label>Височина, см<input name="height_cm" inputmode="decimal" value="<?= e($num($v['height_cm'])) ?>" required></label>
   </div>
-  <p class="muted small" id="hexNote" hidden>При шестоъгълника ширината е диаметърът през ъглите; всяка от 6-те стени е широка половината от него.</p>
+  <p class="muted small" id="hexNote" hidden>При кръглите форми (шестоъгълно, осмоъгълно, кръстато, купа) ширината е диаметърът (през ъглите), а дълбочината се приравнява на него.</p>
   <div class="two">
     <label>Ред в списъка<input name="sort" type="number" value="<?= (int)$v['sort'] ?>"></label>
   </div>
@@ -163,7 +173,7 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
 <script>
 (function () {
   var s = document.getElementById('shape'), d = document.getElementById('dWrap'), wl = document.getElementById('wLabel'), n = document.getElementById('hexNote');
-  function sync() { var hex = s.value === 'hex'; d.hidden = hex; n.hidden = !hex; wl.textContent = hex ? 'Диаметър, см' : 'Ширина, см'; }
+  function sync() { var hex = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(s.value) >= 0; d.hidden = hex; n.hidden = !hex; wl.textContent = hex ? 'Диаметър, см' : 'Ширина, см'; }
   s.addEventListener('change', sync); sync();
 })();
 </script>

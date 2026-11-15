@@ -152,9 +152,40 @@
     'в': [[0.45, 'top'], [0.45, 'bot']], 'ю': [[0.68, 'top'], [0.68, 'bot']], 'ф': [[0.24, 'top'], [0.76, 'top']]
   };
 
+  /**
+   * Перфорация: кръгли отвори в 3 размера (шахматна мрежа), които не застъпват надписа.
+   * excl = {x0, y0, x1, y1} – зоната на надписа (с отстъп); density: dense | sparse
+   */
+  function perfPath(x0, y0, w, h, density, excl) {
+    var sp = density === 'sparse' ? 46 : 27, r0 = density === 'sparse' ? 8 : 5.5, sizes = [0.6, 1, 1.4], d = '';
+    var rows = Math.floor(h / (sp * 0.87)), cols = Math.floor(w / sp);
+    var offX = x0 + (w - (cols - 1) * sp) / 2, offY = y0 + (h - (rows - 1) * sp * 0.87) / 2;
+    for (var j = 0; j < rows; j++) {
+      for (var i = 0; i < cols - (j % 2); i++) {
+        var cxp = offX + i * sp + (j % 2 ? sp / 2 : 0), cyp = offY + j * sp * 0.87;
+        var r = r0 * sizes[(i * 7 + j * 13) % 3];
+        if (cxp - r < x0 || cxp + r > x0 + w || cyp - r < y0 || cyp + r > y0 + h) continue;
+        if (excl && cxp + r > excl.x0 && cxp - r < excl.x1 && cyp + r > excl.y0 && cyp - r < excl.y1) continue;
+        d += 'M' + f(cxp - r) + ',' + f(cyp) + 'a' + f(r) + ',' + f(r) + ' 0 1,0 ' + f(2 * r) + ',0a' + f(r) + ',' + f(r) + ' 0 1,0 ' + f(-2 * r) + ',0Z';
+      }
+    }
+    return d;
+  }
+
   function wallDecor(W, H, o, showText) {
     var L = o.layout, holes = '', bridges = '', edge = L.edge_mm || 25;
-    if (o.pattern && PATTERNS[o.pattern]) {
+    if (o.pattern === 'perf') {
+      // зоната на надписа (дори когато надписът не се рисува на скосена стена – физически го има)
+      var excl = null, ft = o.fit;
+      if (o.text && ft && ft.lines) {
+        var tot = ft.lines.length * ft.line_h + (ft.lines.length - 1) * ft.gap, t0 = (ft.band[0] + ft.band[1]) / 2 - tot / 2;
+        var mw = Math.max.apply(null, ft.widths_mm), clr = Math.max(14, ft.cap_mm * 0.35);
+        excl = { x0: (W - mw) / 2 - clr, x1: (W + mw) / 2 + clr, y0: t0 - clr, y1: t0 + tot + clr };
+      }
+      // при постамента перфорацията е само над отвора за дърва
+      var perfH = o.model && o.model.shape === 'pedestal' ? H * 0.52 - edge : H - 2 * edge;
+      holes += '<path d="' + perfPath(edge, edge, W - 2 * edge, perfH, o.perfDensity, excl) + '"/>';
+    } else if (o.pattern && PATTERNS[o.pattern]) {
       var ob = L.band_orn, oTop = Math.max(ob[0] * H, edge), oBot = Math.min(ob[1] * H, H - edge);
       if (oBot > oTop + 10) holes += '<path d="' + PATTERNS[o.pattern](edge, oTop, W - 2 * edge, oBot - oTop) + '"/>';
     }
@@ -184,24 +215,28 @@
     return { holes: holes, bridges: bridges };
   }
 
-  function wallMarkup(id, W, H, transform, fill, o, decorate, pal, showText) {
+  /** shapePts: по желание – контур на стената в локални координати (напр. трапец); иначе правоъгълник W×H */
+  function wallMarkup(id, W, H, transform, fill, o, decorate, pal, showText, shapePts) {
     var dec = decorate ? wallDecor(W, H, o, showText !== false) : { holes: '', bridges: '' };
+    var body = function (attrs) {
+      return shapePts ? '<polygon points="' + pts(shapePts) + '" ' + attrs + '/>' : '<rect width="' + f(W) + '" height="' + f(H) + '" ' + attrs + '/>';
+    };
     var s = '<g transform="' + transform + '">';
     var masked = '';
     if (dec.holes) {
       s += '<mask id="' + id + '" maskUnits="userSpaceOnUse" x="0" y="0" width="' + f(W) + '" height="' + f(H) + '">' +
         '<rect width="' + f(W) + '" height="' + f(H) + '" fill="#fff"/>' +
         '<g fill="#000">' + dec.holes + '</g><g fill="#fff">' + dec.bridges + '</g></mask>';
-      s += '<rect width="' + f(W) + '" height="' + f(H) + '" fill="url(#' + o.id + 'glow)" class="fp-glow"/>';
+      s += body('fill="url(#' + o.id + 'glow)" class="fp-glow"');
       masked = ' mask="url(#' + id + ')"';
     }
-    s += '<rect width="' + f(W) + '" height="' + f(H) + '" fill="' + fill + '"' + masked + '/>';
-    if (pal.brush) s += '<rect width="' + f(W) + '" height="' + f(H) + '" fill="url(#' + o.id + 'brush)"' + masked + '/>';
+    s += body('fill="' + fill + '"' + masked);
+    if (pal.brush) s += body('fill="url(#' + o.id + 'brush)"' + masked);
     if (dec.holes) {
       // светлина, която "прелива" около отворите
       s += '<g fill="#ff8a2a" opacity="' + (o.lid ? 0.3 : 0.42) + '" filter="url(#' + o.id + 'halo)">' + dec.holes + '</g>';
     }
-    s += '<rect width="' + f(W) + '" height="' + f(H) + '" fill="none" stroke="' + pal.edge + '" stroke-width="2"/>';
+    s += body('fill="none" stroke="' + pal.edge + '" stroke-width="2"');
     return s + '</g>';
   }
 
@@ -230,6 +265,14 @@
       return [240, 300, 0, 60, 120, 180].map(function (a) {
         var r = a * Math.PI / 180;
         return [R * Math.cos(r), R * Math.sin(r)];
+      });
+    }
+    if (m.shape === 'octagon') {
+      // плоска стена отпред; 8 стени, обиколени обратно на часовника
+      var Ro = W / 2;
+      return [247.5, 292.5, 337.5, 22.5, 67.5, 112.5, 157.5, 202.5].map(function (a) {
+        var r = a * Math.PI / 180;
+        return [Ro * Math.cos(r), Ro * Math.sin(r)];
       });
     }
     return [[0, 0], [W, 0], [W, D], [0, D]];
@@ -268,8 +311,8 @@
   }
 
   function legSpots(m, outline, cx, cz) {
-    if (m.shape === 'hex') {
-      return [0, 2, 4].map(function (i) {
+    if (m.shape === 'hex' || m.shape === 'octagon') {
+      return (m.shape === 'hex' ? [0, 2, 4] : [0, 2, 4, 6]).map(function (i) {
         var p = outline[i];
         return [p[0] + (cx - p[0]) * 0.14, p[1] + (cz - p[1]) * 0.14];
       });
@@ -279,9 +322,11 @@
     return [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
   }
 
-  function legsMarkup(spots, legMM, pal) {
+  /** between: рисунка между задните и предните крачета (напр. рафт с дърва) */
+  function legsMarkup(spots, legMM, pal, between) {
     if (!legMM) return '';
-    var h = 13, out = '';
+    var h = 13, out = '', inserted = !between;
+    var zMid = (Math.min.apply(null, spots.map(function (p) { return p[1]; })) + Math.max.apply(null, spots.map(function (p) { return p[1]; }))) / 2;
     if (legMM > 300) {
       // напречни тръби при високите крачета
       var y = legMM * 0.22;
@@ -291,11 +336,39 @@
       });
     }
     spots.slice().sort(function (a, b) { return b[1] - a[1]; }).forEach(function (sp) {
+      if (!inserted && sp[1] <= zMid) { out += between; inserted = true; }
       var x = sp[0] - h, z = sp[1] - h, s = 2 * h;
       out += '<polygon points="' + pts([P(x + s, legMM, z), P(x + s, legMM, z + s), P(x + s, 0, z + s), P(x + s, 0, z)]) + '" fill="' + pal.leg[1] + '"/>';
       out += '<polygon points="' + pts([P(x, legMM, z), P(x + s, legMM, z), P(x + s, 0, z), P(x, 0, z)]) + '" fill="' + pal.leg[0] + '"/>';
     });
+    if (!inserted) out += between;
     return out;
+  }
+
+  /** Рафт с дърва между крачетата (поставка за дърва) */
+  function logRackMarkup(spots, legMM, pal) {
+    var xs = spots.map(function (p) { return p[0]; }), zs = spots.map(function (p) { return p[1]; });
+    var x0 = minOf(xs), x1 = maxOf(xs), z0 = minOf(zs), z1 = maxOf(zs), y = legMM * 0.28, s = '';
+    s += '<polygon points="' + pts([P(x0, y, z0), P(x1, y, z0), P(x1, y, z1), P(x0, y, z1)]) + '" fill="' + pal.leg[1] + '"/>';
+    var r = Math.min(55, (z1 - z0) * 0.16), n = Math.max(3, Math.floor((x1 - x0) / (r * 2.3)));
+    for (var row = 0; row < 2; row++) {
+      for (var i = 0; i < n - row; i++) {
+        var lx = x0 + (x1 - x0) * (i + 0.5 + row * 0.5) / n, c = P(lx, y + r + row * r * 1.7, z0 + 10);
+        s += '<circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="' + f(r) + '" fill="#8a5a33" stroke="#5c3a1e" stroke-width="4"/>';
+        s += '<circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="' + f(r * 0.45) + '" fill="none" stroke="#b07a45" stroke-width="3"/>';
+      }
+    }
+    return s;
+  }
+
+  /** Плот отстрани: dir = 1 вдясно от maxX, -1 вляво от minX */
+  function sideTableMarkup(id, pal, xEdge, dir, T, top, H, cz, minZ, maxZ) {
+    var y = top - 2, tt = 18, xa = dir > 0 ? xEdge : xEdge - T, xb = dir > 0 ? xEdge + T : xEdge, s = '';
+    s += line(P(xEdge, top - Math.min(140, H * 0.8), cz), P(xEdge + dir * T * 0.75, y - tt, cz), 'stroke="' + pal.leg[1] + '" stroke-width="10"');
+    s += '<polygon points="' + pts([P(xa, y, minZ), P(xb, y, minZ), P(xb, y, maxZ), P(xa, y, maxZ)]) + '" fill="url(#' + id + 'top)"/>';
+    s += '<polygon points="' + pts([P(xa, y, minZ), P(xb, y, minZ), P(xb, y - tt, minZ), P(xa, y - tt, minZ)]) + '" fill="url(#' + id + 'front)"/>';
+    if (dir > 0) s += '<polygon points="' + pts([P(xb, y, minZ), P(xb, y, maxZ), P(xb, y - tt, maxZ), P(xb, y - tt, minZ)]) + '" fill="url(#' + id + 'side)"/>';
+    return s;
   }
 
   function line(a, b, attrs) {
@@ -313,14 +386,17 @@
     var ex = o.extras || {}, isGrill = m.shape === 'grill';
     var fireH = Math.min(spanX, spanZ) * (isGrill ? 0.45 : 0.72);
     var armH = spanX * 0.95;
-    var tableW = ex.side_table && m.shape !== 'hex' ? Math.min(320, spanX * 0.55) : 0;
+    var round = m.shape === 'hex' || m.shape === 'octagon';
+    var tableW = ex.side_table && !round ? Math.min(320, spanX * 0.55) : 0;
+    var tableL = ex.side_table_left && !round ? Math.min(320, spanX * 0.55) : 0;
+    var wgH = ex.wind_guard ? Math.min(spanX, spanZ) * 0.4 : 0;
     var topPoly = outline.map(function (p) { return P(p[0], top, p[1]); });
 
-    var up = Math.max(fireH, ex.arm ? armH + 20 : 0, ex.lid ? 60 : 0);
+    var up = Math.max(fireH, ex.arm ? armH + 20 : 0, ex.lid ? 60 : 0, wgH + 20);
     var sxs = outline.map(function (p) { return sx(p[0], p[1]); });
     var bagW = ex.bag ? spanX * 1.05 : 0, bagH = Math.max(H * 1.6 + 40, spanX * 0.45);
-    var vx = minOf(sxs) - 50 - (bagW ? bagW + 40 : 0), vy = -(top + up) - maxZ * KY - 20;
-    var vb = [vx, vy, maxOf(sxs) + (ex.arm ? 70 : 0) + tableW + 40 - vx, -minZ * KY + 50 - vy];
+    var vx = minOf(sxs) - 50 - (bagW ? bagW + 40 : 0) - tableL, vy = -(top + up) - maxZ * KY - 20;
+    var vb = [vx, vy, maxOf(sxs) + (ex.arm ? 70 : 0) + tableW + (ex.wheels ? 60 : 0) + 40 - vx, -minZ * KY + 50 - vy];
 
     var defs = makeDefs(id, pal);
     defs += '<clipPath id="' + id + 'open"><polygon points="' + pts(topPoly) + '"/></clipPath>';
@@ -340,14 +416,29 @@
       s += '<path d="M' + f(ha[0]) + ',' + f(ha[1]) + 'C' + f(ha[0]) + ',' + f(ha[1] - bagH * 0.35) + ' ' + f(hb[0]) + ',' + f(hb[1] - bagH * 0.35) + ' ' + f(hb[0]) + ',' + f(hb[1]) + '" fill="none" stroke="#3f3c2a" stroke-width="9" stroke-linecap="round"/>';
       s += line(P(bx0 + bagW * 0.08, bagH * 0.82, bz0), P(bx1 - bagW * 0.08, bagH * 0.82, bz0), 'stroke="#4b4833" stroke-width="4" stroke-dasharray="10 7"');
     }
-    // крачета
-    s += legsMarkup(legSpots(m, outline, cx, cz), Lg, pal);
+    // крачета (рафтът за дърва е между задните и предните)
+    var spots = legSpots(m, outline, cx, cz);
+    s += legsMarkup(spots, Lg, pal, ex.log_rack && Lg > 300 ? logRackMarkup(spots, Lg, pal) : '');
+    // колела: в долния край на десните крачета
+    if (ex.wheels && Lg) {
+      spots.filter(function (p) { return p[0] > cx; }).sort(function (a, b) { return b[1] - a[1]; }).forEach(function (p) {
+        var c = P(p[0] + 22, 62, p[1]);
+        s += '<circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="62" fill="#26282b" stroke="#111" stroke-width="5"/><circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="20" fill="#9aa0a7"/>';
+      });
+    }
+    // плот вляво (стои зад предната стена – рисува се преди стените)
+    if (tableL) s += sideTableMarkup(id, pal, minX, -1, tableL, top, H, cz, minZ, maxZ);
 
     // стени: видими са тези, чийто ръб върви надясно на екрана
     var walls = outline.map(function (a, i) {
       var b = outline[(i + 1) % n];
       return { i: i, a: a, b: b, len: Math.hypot(b[0] - a[0], b[1] - a[1]), dz: b[1] - a[1], visible: sx(b[0], b[1]) - sx(a[0], a[1]) > 1e-6 };
     });
+    // ветробран: панели над ръба на задните стени (+ дясната при правоъгълните)
+    function guardPanel(w) {
+      return '<polygon points="' + pts([P(w.a[0], top, w.a[1]), P(w.b[0], top, w.b[1]), P(w.b[0], top + wgH, w.b[1]), P(w.a[0], top + wgH, w.a[1])]) + '" fill="' + faceFill(id, w.dz) + '" stroke="' + pal.edge + '" stroke-width="2"/>';
+    }
+    var guardFront = '';
 
     if (!o.table) {
     // вътрешност: през отвора се виждат вътрешните страни на задните стени
@@ -358,6 +449,8 @@
       var poly = [P(w.a[0], top, w.a[1]), P(w.b[0], top, w.b[1]), P(w.b[0], Lg, w.b[1]), P(w.a[0], Lg, w.a[1])];
       s += '<polygon points="' + pts(poly) + '" fill="' + (w.dz < -1e-6 ? pal.inLeft : 'url(#' + id + 'inBack)') + '"/>';
     });
+    if (wgH) s += '</g>' + walls.filter(function (w) { return !w.visible; }).map(guardPanel).join('') + '<g clip-path="url(#' + id + 'open)">';
+    if (wgH && !round) guardFront = walls.filter(function (w) { return w.visible && w.dz > 1e-6; }).map(guardPanel).join('');
     if (!ex.lid) {
       var gc = P(cx, top, minZ + spanZ * 0.3);
       s += '<ellipse class="fp-glow" cx="' + f(gc[0]) + '" cy="' + f(gc[1]) + '" rx="' + f(spanX * 0.62) + '" ry="' + f(spanZ * KY * 1.4) + '" fill="url(#' + id + 'inGlow)"/>';
@@ -375,10 +468,18 @@
       s += '<polygon points="' + pts(outline.map(function (p) { return P(p[0] + (cx - p[0]) * 0.02, top + 3, p[1] + (cz - p[1]) * 0.02); })) + '" fill="none" stroke="#aeb4ba" stroke-width="7"/>';
     }
 
-    // огън
+    // плоча за печене: дебела плоча върху дясната половина на отвора
+    if (ex.griddle && !ex.lid) {
+      var gx0 = cx + 6, gx1 = maxX - 8, gz0 = minZ + 8, gz1 = maxZ - 8, gy = top + 6;
+      s += '<g clip-path="url(#' + id + 'open)"><polygon points="' + pts([P(gx0, gy, gz0), P(gx1, gy, gz0), P(gx1, gy, gz1), P(gx0, gy, gz1)]) + '" fill="#2f3033" stroke="#55585d" stroke-width="4"/>' +
+        line(P(gx0 + 20, gy, gz0 + 25), P(gx1 - 20, gy, gz0 + 25), 'stroke="#45474b" stroke-width="3"') + '</g>';
+    }
+
+    // огън (при плоча за печене – в свободната лява половина)
     if (!ex.lid) {
-      var fc = P(cx, top, cz), frontRimY = P(0, top, minZ)[1];
-      s += flamesMarkup(fc[0], frontRimY + 30, spanX * (isGrill ? 0.7 : 0.62), fireH + (frontRimY - fc[1]) + 30, id);
+      var fcx = ex.griddle ? cx - spanX * 0.22 : cx;
+      var fc = P(fcx, top, cz), frontRimY = P(0, top, minZ)[1];
+      s += flamesMarkup(fc[0], frontRimY + 30, spanX * (ex.griddle ? 0.36 : isGrill ? 0.7 : 0.62), fireH + (frontRimY - fc[1]) + 30, id);
     }
     } // !o.table
 
@@ -399,6 +500,11 @@
         s += '<text class="fp-caption" x="' + f(cxp) + '" y="' + f(cyp) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-size="' + f(fs) + '" fill="' + (pal.caption || 'rgba(40,46,52,.7)') + '">' +
           '<tspan x="' + f(cxp) + '" dy="-0.9em">надписът</tspan><tspan x="' + f(cxp) + '" dy="1.2em">се повтаря</tspan><tspan x="' + f(cxp) + '" dy="1.2em">на тази страна</tspan></text>';
       }
+      // пепелник: чекмедже в долната част на предната стена
+      if (ex.ash_pan && !skewed && w.i === 0) {
+        s += '<g transform="' + tr + '"><rect x="' + f(w.len * 0.3) + '" y="' + f(H * 0.78) + '" width="' + f(w.len * 0.4) + '" height="' + f(H * 0.17) + '" fill="#2b2c2f" stroke="#55585d" stroke-width="3"/>' +
+          '<rect x="' + f(w.len * 0.44) + '" y="' + f(H * 0.83) + '" width="' + f(w.len * 0.12) + '" height="' + f(Math.max(8, H * 0.03)) + '" rx="4" fill="#9aa0a7"/></g>';
+      }
     });
 
     // ръбове: задните (тънки), предните (по-плътни) и вертикалните ъгли между видими стени
@@ -411,6 +517,7 @@
         s += line(P(w.b[0], top, w.b[1]), P(w.b[0], Lg, w.b[1]), 'stroke="' + pal.rim + '" stroke-opacity=".7" stroke-width="2.5"');
       }
     });
+    s += guardFront;
 
     // огнище маса на дърва: кръгла огнена купа, вградена в плота, с мрежест искрогасител отгоре
     if (o.table) {
@@ -453,20 +560,30 @@
       });
       var h1 = P(cx - 70, yl, cz), h2 = P(cx + 70, yl, cz);
       s += '<path d="M' + f(h1[0]) + ',' + f(h1[1]) + 'C' + f(h1[0]) + ',' + f(h1[1] - 55) + ' ' + f(h2[0]) + ',' + f(h2[1] - 55) + ' ' + f(h2[0]) + ',' + f(h2[1]) + '" fill="none" stroke="#3b3f44" stroke-width="12" stroke-linecap="round"/>';
+      // термометър на капака
+      if (ex.thermometer) {
+        var tc = P(cx, yl - t / 2, minZ - 14);
+        s += '<circle cx="' + f(tc[0]) + '" cy="' + f(tc[1]) + '" r="22" fill="#f4f1ec" stroke="#3b3f44" stroke-width="5"/>' +
+          line(tc, [tc[0] + 11, tc[1] - 11], 'stroke="#c0392b" stroke-width="3" stroke-linecap="round"') + '<circle cx="' + f(tc[0]) + '" cy="' + f(tc[1]) + '" r="3" fill="#3b3f44"/>';
+      }
     }
 
-    // страничен плот (вдясно)
-    if (tableW) {
-      var y = top - 2, tt = 18, x0 = maxX, x1 = maxX + tableW;
-      s += line(P(x0, top - Math.min(140, H * 0.8), cz), P(x0 + tableW * 0.75, y - tt, cz), 'stroke="' + pal.leg[1] + '" stroke-width="10"');
-      s += '<polygon points="' + pts([P(x0, y, minZ), P(x1, y, minZ), P(x1, y, maxZ), P(x0, y, maxZ)]) + '" fill="url(#' + id + 'top)"/>';
-      s += '<polygon points="' + pts([P(x0, y, minZ), P(x1, y, minZ), P(x1, y - tt, minZ), P(x0, y - tt, minZ)]) + '" fill="url(#' + id + 'front)"/>';
-      s += '<polygon points="' + pts([P(x1, y, minZ), P(x1, y, maxZ), P(x1, y - tt, maxZ), P(x1, y - tt, minZ)]) + '" fill="url(#' + id + 'side)"/>';
+    // страничен плот вдясно
+    if (tableW) s += sideTableMarkup(id, pal, maxX, 1, tableW, top, H, cz, minZ, maxZ);
+
+    // куки за прибори: под предния ръб на десния плот или на дясната стена
+    if (ex.hooks) {
+      for (var hk = 0; hk < 3; hk++) {
+        var hx = tableW ? maxX + tableW * (0.3 + hk * 0.2) : maxX + 4, hz = tableW ? minZ : minZ + spanZ * (0.25 + hk * 0.22);
+        var hy = tableW ? top - 22 : top - 25, h0 = P(hx, hy, hz), h1b = P(hx, hy - 50, hz);
+        s += line(h0, h1b, 'stroke="#8b9096" stroke-width="5" stroke-linecap="round"') +
+          '<path d="M' + f(h1b[0]) + ',' + f(h1b[1]) + 'q0,16 -12,14" fill="none" stroke="#8b9096" stroke-width="5" stroke-linecap="round"/>';
+      }
     }
 
     // рамо за котле
     if (ex.arm) {
-      var zA = m.shape === 'hex' ? 0 : minZ + spanZ * 0.78, xA = maxX + 28;
+      var zA = round ? 0 : minZ + spanZ * 0.78, xA = maxX + 28;
       var p0 = P(xA, Lg + 25, zA), p1 = P(xA, top + armH, zA), p2 = P(cx, top + armH, cz);
       s += line(p0, p1, 'stroke="#55595e" stroke-width="18" stroke-linecap="round"');
       [Lg + 60, top - 40].forEach(function (yy) {
@@ -491,7 +608,8 @@
     o.id = o.id || 'fp';
     o.fontFamily = "'fp-" + (o.fontKey || 'russo') + "'";
     o.lid = o.extras && o.extras.lid;
-    var r = renderPrism(o);
+    var SHAPES = { trapezoid: renderTrapezoid, pedestal: renderPedestal, cross: renderCross, ringbowl: renderRingBowl };
+    var r = (SHAPES[o.model.shape] || renderPrism)(o);
     var style = o.fontCss ? '<style>' + o.fontCss + '</style>' : '';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + r.viewBox.map(f).join(' ') + '" role="img" aria-label="' + esc(o.title || o.model.name) + '">' +
       style + '<defs>' + r.defs + '</defs>' + r.body + '</svg>';
@@ -534,19 +652,12 @@
     return s;
   }
 
-  function renderBowl(o) {
-    var pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, R = o.d * 10 / 2;
-    var Hp = 250, Hb = R * 0.6, top = Hp + Hb, fh = R * 0.95, s = '';
-    s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.75) + '" ry="' + f(R * KY + 30) + '" fill="url(#' + id + 'shadow)"/>';
-    // крак и основа
-    s += cylSide(R * 0.42, 0, 26, 'fill="url(#' + id + 'side)"');
-    s += poly(circ(0, 0, R * 0.42, 26, 0, 2 * Math.PI), 'fill="url(#' + id + 'top)"');
-    s += cylSide(R * 0.2, 26, Hp + 30, 'fill="url(#' + id + 'body)"');
-    // купа: долна обвивка на нивата + задната дъга на ръба
+  /** Тяло на кръгла купа (център 0,0): долна обвивка на нивата + задната дъга на ръба */
+  function bowlBody(id, R, yBottom, depth, minFrac) {
     var levels = [];
     for (var i = 0; i <= 16; i++) {
       var t = i / 16;
-      levels.push({ y: Hp + t * Hb, r: R * Math.max(0.3, Math.sqrt(1 - (1 - t) * (1 - t))) });
+      levels.push({ y: yBottom + t * depth, r: R * Math.max(minFrac, Math.sqrt(1 - (1 - t) * (1 - t))) });
     }
     var env = [];
     for (var k = 0; k <= 48; k++) {
@@ -557,7 +668,172 @@
       });
       env.push(best);
     }
-    s += poly(env.concat(circ(0, 0, R, top, BACK[0], BACK[1])), 'fill="url(#' + id + 'body)"');
+    return poly(env.concat(circ(0, 0, R, yBottom + depth, BACK[0], BACK[1])), 'fill="url(#' + id + 'body)"');
+  }
+
+  /** Скара/плоча върху кръгъл отвор (център 0,0) */
+  function roundCooking(id, ri, top, ex) {
+    var s = '', clip = id + 'rc';
+    if (!ex.grate && !ex.griddle) return '';
+    s += '<clipPath id="' + clip + '"><polygon points="' + pts(circ(0, 0, ri, top + 4, 0, 2 * Math.PI, 48)) + '"/></clipPath><g clip-path="url(#' + clip + ')">';
+    if (ex.griddle) s += '<polygon points="' + pts([P(4, top + 6, -ri), P(ri, top + 6, -ri), P(ri, top + 6, ri), P(4, top + 6, ri)]) + '" fill="#2f3033" stroke="#55585d" stroke-width="4"/>';
+    if (ex.grate) {
+      for (var i = 1; i <= 7; i++) {
+        var z = -ri + 2 * ri * i / 8;
+        s += line(P(-ri, top + 8, z), P(ri, top + 8, z), 'stroke="#c9ced3" stroke-width="5" stroke-linecap="round"');
+      }
+    }
+    return s + '</g>';
+  }
+
+  /* ---------- Трапецовидно огнище: квадратно дъно, стени наклонени навън ---------- */
+  function renderTrapezoid(o) {
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, ex = o.extras || {};
+    var W = m.w * 10, H = m.h * 10, Lg = (o.legCm || 0) * 10, top = Lg + H, t = 0.22 * H;
+    var defs = makeDefs(id, pal), s = '';
+    var topO = [[-t, -t], [W + t, -t], [W + t, W + t], [-t, W + t]], topPoly = topO.map(function (p) { return P(p[0], top, p[1]); });
+    defs += '<clipPath id="' + id + 'open"><polygon points="' + pts(topPoly) + '"/></clipPath>';
+    var fireH = W * 0.72, up = Math.max(fireH, ex.lid ? 60 : 0);
+    var sc = P(W / 2, 0, W / 2);
+    s += '<ellipse cx="' + f(sc[0]) + '" cy="' + f(sc[1] + 8) + '" rx="' + f(W * 0.85) + '" ry="' + f(W * KY + 50) + '" fill="url(#' + id + 'shadow)"/>';
+    s += legsMarkup([[27, 27], [W - 27, 27], [W - 27, W - 27], [27, W - 27]], Lg, pal, '');
+    // вътрешност
+    s += '<g clip-path="url(#' + id + 'open)"><polygon points="' + pts(topPoly) + '" fill="' + pal.inLeft + '"/>' +
+      '<polygon points="' + pts([P(-t, top, W + t), P(W + t, top, W + t), P(W, Lg, W), P(0, Lg, W)]) + '" fill="url(#' + id + 'inBack)"/>' +
+      '<polygon points="' + pts([P(-t, top, -t), P(-t, top, W + t), P(0, Lg, W), P(0, Lg, 0)]) + '" fill="' + pal.inLeft + '"/>';
+    if (!ex.lid) s += '<ellipse class="fp-glow" cx="' + f(P(W / 2, top, W * 0.3)[0]) + '" cy="' + f(P(W / 2, top, W * 0.3)[1]) + '" rx="' + f(W * 0.7) + '" ry="' + f(W * KY * 1.4) + '" fill="url(#' + id + 'inGlow)"/>';
+    if (ex.grate && !ex.lid) {
+      for (var i = 1; i <= 8; i++) {
+        var z = -t + (W + 2 * t) * i / 9;
+        s += line(P(-t, top + 3, z), P(W + t, top + 3, z), 'stroke="#c9ced3" stroke-width="5" stroke-linecap="round"');
+      }
+    }
+    if (ex.griddle && !ex.lid) s += '<polygon points="' + pts([P(W / 2 + 6, top + 6, -t + 8), P(W + t - 8, top + 6, -t + 8), P(W + t - 8, top + 6, W + t - 8), P(W / 2 + 6, top + 6, W + t - 8)]) + '" fill="#2f3033" stroke="#55585d" stroke-width="4"/>';
+    s += '</g>';
+    if (!ex.lid) {
+      var fcx = ex.griddle ? W * 0.28 : W / 2, fc = P(fcx, top, W / 2), frontRimY = P(0, top, -t)[1];
+      s += flamesMarkup(fc[0], frontRimY + 30, W * (ex.griddle ? 0.4 : 0.7), fireH + (frontRimY - fc[1]) + 30, id);
+    }
+    // предна наклонена стена (с надпис): локални координати u = 0..W+2t, v = 0..H
+    var tr = 'matrix(1,0,' + (t * KX / H).toFixed(4) + ',' + (1 - t * KY / H).toFixed(4) + ',' + f(-t - t * KX) + ',' + f(-top + t * KY) + ')';
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    s += wallMarkup(id + 'm0', W + 2 * t, H, tr, 'url(#' + id + 'front)', o, decorate, pal, true, [[0, 0], [W + 2 * t, 0], [W + t, H], [t, H]]);
+    // дясна наклонена стена
+    s += '<polygon points="' + pts([P(W + t, top, -t), P(W + t, top, W + t), P(W, Lg, W), P(W, Lg, 0)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
+    // ръбове
+    s += '<polyline points="' + pts([P(W + t, top, W + t), P(-t, top, W + t), P(-t, top, -t)]) + '" fill="none" stroke="' + pal.rim + '" stroke-opacity=".55" stroke-width="3"/>';
+    s += '<polyline points="' + pts([P(-t, top, -t), P(W + t, top, -t), P(W + t, top, W + t)]) + '" fill="none" stroke="' + pal.rim + '" stroke-width="5" stroke-linejoin="round"/>';
+    s += line(P(W + t, top, -t), P(W, Lg, 0), 'stroke="' + pal.rim + '" stroke-opacity=".7" stroke-width="2.5"');
+    if (ex.lid) {
+      var yl = top + 4, k = 10;
+      s += '<polygon points="' + pts([P(-t - k, yl, -t - k), P(W + t + k, yl, -t - k), P(W + t + k, yl, W + t + k), P(-t - k, yl, W + t + k)]) + '" fill="url(#' + id + 'top)"/>';
+      s += '<polygon points="' + pts([P(-t - k, yl, -t - k), P(W + t + k, yl, -t - k), P(W + t + k, yl - 26, -t - k), P(-t - k, yl - 26, -t - k)]) + '" fill="url(#' + id + 'front)"/>';
+      var h1 = P(W / 2 - 70, yl, W / 2), h2 = P(W / 2 + 70, yl, W / 2);
+      s += '<path d="M' + f(h1[0]) + ',' + f(h1[1]) + 'C' + f(h1[0]) + ',' + f(h1[1] - 55) + ' ' + f(h2[0]) + ',' + f(h2[1] - 55) + ' ' + f(h2[0]) + ',' + f(h2[1]) + '" fill="none" stroke="#3b3f44" stroke-width="12" stroke-linecap="round"/>';
+    }
+    var vx = sx(-t, -t) - 60, vy = -(top + up) - (W + t) * KY - 20;
+    return { viewBox: [vx, vy, sx(W + t, W + t) + 60 - vx, 60 - vy], defs: defs, body: s };
+  }
+
+  /* ---------- Огнище на постамент: кутия с отвор за дърва и плитка купа отгоре (център 0,0) ---------- */
+  function renderPedestal(o) {
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, ex = o.extras || {};
+    var W = m.w * 10, H = m.h * 10, hw = W / 2, R = 0.45 * W, Hb = 0.16 * W, yb = H + 18, top = yb + Hb, fh = R * 1.05;
+    var defs = roundDefs(id, pal, R), s = '';
+    s += '<ellipse cx="' + f(P(0, 0, 0)[0]) + '" cy="8" rx="' + f(W * 0.8) + '" ry="' + f(hw * KY * 2 + 40) + '" fill="url(#' + id + 'shadow)"/>';
+    // стени: предна (с надпис над отвора) и дясна
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    s += wallMarkup(id + 'm0', W, H, 'matrix(1,0,0,1,' + f(-hw - hw * KX) + ',' + f(-H + hw * KY) + ')', 'url(#' + id + 'front)', o, decorate, pal, true);
+    s += wallMarkup(id + 'm1', W, H, 'matrix(' + KX.toFixed(4) + ',' + (-KY).toFixed(4) + ',0,1,' + f(hw - hw * KX) + ',' + f(-H + hw * KY) + ')', 'url(#' + id + 'side)', o, false, pal, false);
+    // отвор за дърва с цепеници (в долната част на предната стена)
+    var ox0 = W * 0.14, ow = W * 0.72, oy0 = H * 0.56, oh = H * 0.38, lr = Math.min(oh * 0.2, ow * 0.09);
+    var logs = '<rect x="' + f(ox0) + '" y="' + f(oy0) + '" width="' + f(ow) + '" height="' + f(oh) + '" fill="#141210"/>';
+    for (var row = 0; row < 3; row++) {
+      for (var i = 0; i < Math.floor(ow / (lr * 2.2)) - (row % 2); i++) {
+        var lx = ox0 + lr * 1.15 + i * lr * 2.2 + (row % 2 ? lr * 1.1 : 0), ly = oy0 + oh - lr * 1.05 - row * lr * 1.85;
+        logs += '<circle cx="' + f(lx) + '" cy="' + f(ly) + '" r="' + f(lr) + '" fill="#8a5a33" stroke="#5c3a1e" stroke-width="3"/><circle cx="' + f(lx) + '" cy="' + f(ly) + '" r="' + f(lr * 0.45) + '" fill="none" stroke="#b07a45" stroke-width="2"/>';
+      }
+    }
+    s += '<g transform="matrix(1,0,0,1,' + f(-hw - hw * KX) + ',' + f(-H + hw * KY) + ')">' + logs +
+      '<rect x="' + f(ox0) + '" y="' + f(oy0) + '" width="' + f(ow) + '" height="' + f(oh) + '" fill="none" stroke="' + pal.edge + '" stroke-width="3"/></g>';
+    // плот
+    s += '<polygon points="' + pts([P(-hw, H, -hw), P(hw, H, -hw), P(hw, H, hw), P(-hw, H, hw)]) + '" fill="url(#' + id + 'top)" stroke="' + pal.rim + '" stroke-width="3"/>';
+    // купа
+    s += cylSide(R * 0.5, H, yb, 'fill="url(#' + id + 'side)"');
+    s += bowlBody(id, R, yb, Hb, 0.55);
+    s += roundTop(id, pal, R, top, fh);
+    s += roundCooking(id, R - 28, top, ex);
+    var vx = sx(-hw, -hw) - 60;
+    var vy = Math.min(-(top + fh) - R * KY - 30, -H - hw * KY - 40);
+    return { viewBox: [vx, vy, sx(hw, hw) + 60 - vx, hw * KY + 60 - vy], defs: defs, body: s };
+  }
+
+  /* ---------- Кръстато сглобяемо огнище: две плочи на прорези (център 0,0) ---------- */
+  function renderCross(o) {
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, ex = o.extras || {};
+    var W = m.w * 10, H = m.h * 10, hw = W / 2, fh = H * 1.6;
+    var defs = makeDefs(id, pal), s = '';
+    s += '<ellipse cx="0" cy="8" rx="' + f(W * 0.7) + '" ry="' + f(hw * KY + 50) + '" fill="url(#' + id + 'shadow)"/>';
+    // задната половина на напречната плоча (стената x = 0, z = 0..hw)
+    s += '<polygon points="' + pts([P(0, H, 0), P(0, H, hw), P(0, 0, hw), P(0, 0, 0)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
+    // огън в центъра
+    var g = P(0, 70, 0);
+    s += '<ellipse class="fp-glow" cx="' + f(g[0]) + '" cy="' + f(g[1]) + '" rx="' + f(W * 0.3) + '" ry="' + f(W * 0.05) + '" fill="url(#' + id + 'inGlow)"/>';
+    s += flamesMarkup(g[0], g[1] + 10, W * 0.5, fh, id);
+    // предна плоча: дясна половина с надписа (предната половина на напречната плоча закрива лявата), лява – гладка
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    s += wallMarkup(id + 'm1', hw, H, 'matrix(1,0,0,1,' + f(-hw) + ',' + f(-H) + ')', 'url(#' + id + 'front)', o, false, pal, false);
+    s += wallMarkup(id + 'm0', hw, H, 'matrix(1,0,0,1,0,' + f(-H) + ')', 'url(#' + id + 'front)', o, decorate, pal, true);
+    // предната половина на напречната плоча (стената x = 0, z = -hw..0)
+    s += '<polygon points="' + pts([P(0, H, -hw), P(0, H, 0), P(0, 0, 0), P(0, 0, -hw)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
+    s += line(P(0, H, -hw), P(0, H, 0), 'stroke="' + pal.rim + '" stroke-width="4"') + line(P(-hw, H, 0), P(hw, H, 0), 'stroke="' + pal.rim + '" stroke-width="4"');
+    if (ex.grate) {
+      var gs = hw * 0.75, yy = H + 4;
+      s += '<polygon points="' + pts([P(-gs, yy, -gs), P(gs, yy, -gs), P(gs, yy, gs), P(-gs, yy, gs)]) + '" fill="none" stroke="#aeb4ba" stroke-width="7"/>';
+      for (var i = 1; i <= 7; i++) {
+        var z = -gs + 2 * gs * i / 8;
+        s += line(P(-gs, yy, z), P(gs, yy, z), 'stroke="#c9ced3" stroke-width="5" stroke-linecap="round"');
+      }
+    }
+    var vx = sx(-hw, 0) - 60, vy = -(Math.max(H, fh + 30)) - hw * KY - 40;
+    return { viewBox: [vx, vy, sx(hw, hw) + 60 - vx, hw * KY + 60 - vy], defs: defs, body: s };
+  }
+
+  /* ---------- Кръгла купа с пръстен (купата от шоурума върху пръстен с надпис) ---------- */
+  function renderRingBowl(o) {
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, ex = o.extras || {};
+    var D = m.w * 10, Ht = m.h * 10, R = D / 2, rr = 0.36 * D, Hr = 0.55 * Ht, Hb = Ht - Hr, fh = R * 0.95, s = '';
+    var defs = roundDefs(id, pal, R);
+    s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.95) + '" ry="' + f(R * KY + 40) + '" fill="url(#' + id + 'shadow)"/>';
+    // пръстен (цилиндър) с плосък участък отпред за надписа
+    s += cylSide(rr, 0, Hr, 'fill="url(#' + id + 'body)"');
+    var cw = 2 * rr * 0.62, decorate = !!(o.text && o.fit) || !!o.pattern;
+    if (decorate) {
+      // плосък участък с надписа: същият градиент като цилиндъра (изместен с cw/2) и изрязан по контура на пръстена
+      var flat = Object.assign({}, pal, { edge: 'none', brush: false });
+      defs += '<linearGradient id="' + id + 'bodyL" gradientUnits="userSpaceOnUse" x1="' + f(-R * 1.1 + cw / 2) + '" y1="0" x2="' + f(R * 1.1 + cw / 2) + '" y2="0">' +
+        pal.front.concat([pal.side[0], pal.side[1]]).map(function (c, i, a) { return '<stop offset="' + f(i / (a.length - 1)) + '" stop-color="' + c + '"/>'; }).join('') + '</linearGradient>';
+      defs += '<clipPath id="' + id + 'ring">' + cylSide(rr, 0, Hr, '') + '</clipPath>';
+      s += '<g clip-path="url(#' + id + 'ring)">' + wallMarkup(id + 'm0', cw, Hr, 'matrix(1,0,0,1,' + f(-cw / 2) + ',' + f(-Hr + rr * KY / Math.sqrt(1 + KX * KX)) + ')', 'url(#' + id + 'bodyL)', o, true, flat, true) + '</g>';
+    }
+    s += poly(circ(0, 0, rr, Hr, FRONT[0], FRONT[1]), 'fill="none" stroke="' + pal.rim + '" stroke-opacity=".6" stroke-width="3"');
+    // купа върху пръстена
+    s += bowlBody(id, R, Hr, Hb, rr / R);
+    s += roundTop(id, pal, R, Ht, fh);
+    s += roundCooking(id, R - 28, Ht, ex);
+    var vx = -R * 1.12 - 30;
+    return { viewBox: [vx, -(Ht + fh) - R * KY - 40, -vx * 2, Ht + fh + R * KY * 2 + 90], defs: defs, body: s };
+  }
+
+  function renderBowl(o) {
+    var pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, R = o.d * 10 / 2;
+    var Hp = 250, Hb = R * 0.6, top = Hp + Hb, fh = R * 0.95, s = '';
+    s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.75) + '" ry="' + f(R * KY + 30) + '" fill="url(#' + id + 'shadow)"/>';
+    // крак и основа
+    s += cylSide(R * 0.42, 0, 26, 'fill="url(#' + id + 'side)"');
+    s += poly(circ(0, 0, R * 0.42, 26, 0, 2 * Math.PI), 'fill="url(#' + id + 'top)"');
+    s += cylSide(R * 0.2, 26, Hp + 30, 'fill="url(#' + id + 'body)"');
+    s += bowlBody(id, R, Hp, Hb, 0.3);
     // отблясък
     s += '<path d="M' + f(-R * 0.62) + ',' + f(-top + R * 0.05) + 'Q' + f(-R * 0.55) + ',' + f(-Hp - Hb * 0.25) + ' ' + f(-R * 0.18) + ',' + f(-Hp + 10) + '" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="' + f(R * 0.06) + '" stroke-linecap="round"/>';
     s += roundTop(id, pal, R, top, fh);
@@ -608,5 +884,5 @@
       '<defs>' + r.defs + '</defs>' + r.body + '</svg>';
   }
 
-  global.FPRender = { render: render, renderShowcase: renderShowcase, patterns: PATTERNS, KX: KX, KY: KY };
+  global.FPRender = { render: render, renderShowcase: renderShowcase, patterns: PATTERNS, perf: perfPath, KX: KX, KY: KY };
 })(window);

@@ -80,7 +80,8 @@ function validate_config(array $in, array $cat): array
     $thickness = isset($chosen['material']['code']) ? (float)($byGroup['material'][$chosen['material']['code']]['opt']['render']['thickness_mm'] ?? 2) : 2.0;
     $minMm = min_letter_for_thickness($thickness);
     if ($text !== '') {
-        $chk = text_check(text_lines($text), $fontKey, $walls, $pattern !== null, $minMm);
+        // перфорацията е около надписа и не заема отделна зона
+        $chk = text_check(text_lines($text), $fontKey, $walls, $pattern !== null && $pattern !== 'perf', $minMm, $model['shape']);
         $fit = $chk['fit'];
         if ($chk['error'] !== null) {
             $errors['text'] = $chk['error'];
@@ -91,6 +92,21 @@ function validate_config(array $in, array $cat): array
     if ($qty === false) {
         $errors['quantity'] = 'Количеството трябва да е между 1 и 50.';
         $qty = 1;
+    }
+
+    // правила между опциите (от данните): „изключва се с“ (в двете посоки) и „изисква“
+    $selIds = array_map(fn($x) => $x['opt']['id'], $sel);
+    foreach ($cat['rules'] ?? [] as $r) {
+        $a = $cat['options'][$r['option']] ?? null;
+        $b = $cat['options'][$r['target']] ?? null;
+        if (!$a || !$b || !in_array($a['id'], $selIds, true)) {
+            continue;
+        }
+        if ($r['kind'] === 'excludes' && in_array($b['id'], $selIds, true)) {
+            $errors['options.' . $a['group']] = '„' . $a['name'] . '“ и „' . $b['name'] . '“ не могат заедно.';
+        } elseif ($r['kind'] === 'requires' && !in_array($b['id'], $selIds, true)) {
+            $errors['options.' . $a['group']] = '„' . $a['name'] . '“ изисква „' . $b['name'] . '“.';
+        }
     }
 
     $isDecorated = $text !== '' || $pattern !== null;
@@ -128,7 +144,7 @@ function validate_config(array $in, array $cat): array
  * (Плюс технически таван 40 знака и само позволени знаци.) Огледало на checkText() в geometry.js.
  * Връща ['error' => ?string, 'fit' => ?array, 'split' => ?array (предложение за 2 реда)]
  */
-function text_check(array $lines, string $fontKey, array $walls, bool $hasOrnament, float $minMm): array
+function text_check(array $lines, string $fontKey, array $walls, bool $hasOrnament, float $minMm, string $shape = 'box'): array
 {
     $text = implode("\n", $lines);
     $len = text_length($text);
@@ -145,7 +161,7 @@ function text_check(array $lines, string $fontKey, array $walls, bool $hasOrname
     if ($bad) {
         return ['error' => 'Тези знаци не могат да се изрежат: ' . implode(' ', array_keys($bad)), 'fit' => null, 'split' => null];
     }
-    $fit = text_fit($lines, $fontKey, $walls, $hasOrnament);
+    $fit = text_fit($lines, $fontKey, $walls, $hasOrnament, $shape);
     if (!$fit) {
         return ['error' => 'Надписът не може да бъде разположен.', 'fit' => null, 'split' => null];
     }

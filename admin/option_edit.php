@@ -18,13 +18,16 @@ if (!isset($groupById[$gid])) {
 $group = $groupById[$gid];
 $gcode = $group['code'];
 $fonts = font_metrics()['fonts'];
-$patterns = ['' => 'Без орнамент', 'flames' => 'Пламъци', 'mountains' => 'Планини', 'pines' => 'Борове', 'shevitsa' => 'Шевица'];
-$extras = ['grate' => 'Скара (решетка отгоре)', 'arm' => 'Рамо с котле', 'side_table' => 'Страничен плот', 'lid' => 'Капак', 'bag' => 'Калъф', '' => 'Без изглед (само в текста)'];
+$patterns = ['' => 'Без орнамент', 'flames' => 'Пламъци', 'mountains' => 'Планини', 'pines' => 'Борове', 'shevitsa' => 'Шевица', 'perf' => 'Перфорация (кръгли отвори около надписа)'];
+$subgroups = ['cook' => 'За печене', 'comfort' => 'За удобство', 'carry' => 'За пренасяне', '' => 'Други'];
+$extras = ['grate' => 'Скара (решетка отгоре)', 'griddle' => 'Плоча за печене', 'arm' => 'Рамо с котле', 'lid' => 'Капак', 'thermometer' => 'Термометър на капака',
+    'side_table' => 'Страничен плот вдясно', 'side_table_left' => 'Страничен плот вляво', 'hooks' => 'Куки за прибори', 'ash_pan' => 'Пепелник (чекмедже)',
+    'wind_guard' => 'Ветробран', 'log_rack' => 'Поставка за дърва под корпуса', 'wheels' => 'Колела', 'bag' => 'Калъф', '' => 'Без изглед (само в текста)'];
 $errors = [];
 
 $render = $opt ? (json_decode((string)$opt['render'], true) ?: []) : [];
 $v = $opt ?: ['code' => '', 'name' => '', 'hint' => '', 'price_type' => $gcode === 'material' ? 'factor' : 'add', 'price_min' => $gcode === 'material' ? 1 : 0,
-    'price_max' => $gcode === 'material' ? 1 : 0, 'weight_kg' => 0, 'sort' => 10, 'active' => 1];
+    'price_max' => $gcode === 'material' ? 1 : 0, 'weight_kg' => 0, 'sort' => 10, 'active' => 1, 'subgroup' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['action'] ?? '') === 'delete' && $opt) {
@@ -42,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'weight_kg' => post_num('weight_kg') ?? 0,
         'sort' => (int)($_POST['sort'] ?? 0),
         'active' => isset($_POST['active']) ? 1 : 0,
+        'subgroup' => $gcode === 'extras' && isset($subgroups[$_POST['subgroup'] ?? '']) ? (string)$_POST['subgroup'] : '',
     ];
     if (!preg_match('/^[a-z0-9_]{1,32}$/', $v['code'])) $errors[] = 'Кодът: малки латински букви, цифри или _.';
     elseif (db_one('SELECT id FROM options WHERE group_id = ? AND code = ? AND id <> ?', [$gid, $v['code'], $id])) $errors[] = 'В тази група вече има опция с този код.';
@@ -54,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $render = [];
     switch ($gcode) {
         case 'material':
-            $render['finish'] = ($_POST['finish'] ?? 'inox') === 'black' ? 'black' : 'inox';
+            $render['finish'] = in_array($_POST['finish'] ?? '', ['inox', 'black', 'corten'], true) ? $_POST['finish'] : 'inox';
             $render['thickness_mm'] = post_num('thickness_mm');
             $render['density'] = post_num('density');
             if (!$render['thickness_mm'] || $render['thickness_mm'] < 0.5 || $render['thickness_mm'] > 20) $errors[] = 'Дебелина: 0,5–20 мм.';
@@ -75,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'ornament':
             $p = (string)($_POST['pattern'] ?? '');
             $render['pattern'] = isset($patterns[$p]) && $p !== '' ? $p : null;
+            if ($render['pattern'] === 'perf') $render['density'] = ($_POST['density'] ?? '') === 'sparse' ? 'sparse' : 'dense';
             if ($render['pattern'] && isset($_POST['per_side'])) $render['per_side'] = true;
             break;
         case 'extras':
@@ -85,19 +90,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $json = json_encode($render ?: new stdClass(), JSON_UNESCAPED_UNICODE);
-        $params = [$v['code'], mb_substr($v['name'], 0, 100), $v['hint'] !== '' ? mb_substr($v['hint'], 0, 255) : null, $v['price_type'], $v['price_min'], $v['price_max'], $v['weight_kg'], $json, $v['sort'], $v['active']];
+        $params = [$v['code'], mb_substr($v['name'], 0, 100), $v['hint'] !== '' ? mb_substr($v['hint'], 0, 255) : null, $v['subgroup'] !== '' ? $v['subgroup'] : null, $v['price_type'], $v['price_min'], $v['price_max'], $v['weight_kg'], $json, $v['sort'], $v['active']];
         if ($opt) {
             $params[] = $id;
-            db()->prepare('UPDATE options SET code=?, name=?, hint=?, price_type=?, price_min=?, price_max=?, weight_kg=?, render=?, sort=?, active=? WHERE id=?')->execute($params);
+            db()->prepare('UPDATE options SET code=?, name=?, hint=?, subgroup=?, price_type=?, price_min=?, price_max=?, weight_kg=?, render=?, sort=?, active=? WHERE id=?')->execute($params);
             flash('Опцията е запазена.');
         } else {
             array_unshift($params, $gid);
-            db()->prepare('INSERT INTO options (group_id, code, name, hint, price_type, price_min, price_max, weight_kg, render, sort, active) VALUES (?,?,?,?,?,?,?,?,?,?,?)')->execute($params);
+            db()->prepare('INSERT INTO options (group_id, code, name, hint, subgroup, price_type, price_min, price_max, weight_kg, render, sort, active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')->execute($params);
             $id = (int)db()->lastInsertId();
             if (isset($_POST['add_all'])) {
                 db()->prepare('INSERT INTO model_options (model_id, option_id) SELECT id, ? FROM models')->execute([$id]);
             }
             flash('Опцията е създадена.' . (isset($_POST['add_all']) ? ' Добавена е към всички модели.' : ' Добавете я към моделите в „Съвместимост“.'));
+        }
+        // правила: „не може заедно с“ и „изисква“ (само за екстрите)
+        if ($gcode === 'extras') {
+            db()->prepare('DELETE FROM option_rules WHERE option_id = ?')->execute([$id]);
+            $ins = db()->prepare('INSERT IGNORE INTO option_rules (option_id, kind, target_id) VALUES (?, ?, ?)');
+            foreach ((array)($_POST['excludes'] ?? []) as $t) {
+                if ((int)$t && (int)$t !== $id) $ins->execute([$id, 'excludes', (int)$t]);
+            }
+            if ((int)($_POST['requires'] ?? 0)) $ins->execute([$id, 'requires', (int)$_POST['requires']]);
         }
         redirect(url('admin/option_edit.php?id=' . $id));
     }
@@ -139,7 +153,7 @@ admin_header($opt ? 'Опция ' . $opt['name'] : 'Нова опция', 'optio
     <legend>Изглед и изчисления</legend>
     <?php if ($gcode === 'material'): ?>
       <label>Повърхност в изгледа
-        <select name="finish"><option value="inox" <?= ($render['finish'] ?? '') !== 'black' ? 'selected' : '' ?>>Шлайфан инокс</option><option value="black" <?= ($render['finish'] ?? '') === 'black' ? 'selected' : '' ?>>Черна стомана</option></select>
+        <select name="finish"><?php foreach (['inox' => 'Шлайфан инокс', 'black' => 'Черна стомана', 'corten' => 'Кортен (ръждив)'] as $fk => $fl): ?><option value="<?= $fk ?>" <?= ($render['finish'] ?? 'inox') === $fk ? 'selected' : '' ?>><?= $fl ?></option><?php endforeach; ?></select>
       </label>
       <div class="two">
         <label>Дебелина, мм<input name="thickness_mm" inputmode="decimal" value="<?= $r('thickness_mm', '2') ?>"></label>
@@ -160,6 +174,7 @@ admin_header($opt ? 'Опция ' . $opt['name'] : 'Нова опция', 'optio
       <label>Мотив
         <select name="pattern"><?php foreach ($patterns as $k => $label): ?><option value="<?= e($k) ?>" <?= (string)($render['pattern'] ?? '') === $k ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
       </label>
+      <label>Гъстота на перфорацията (ако мотивът е „Перфорация“)<select name="density"><option value="dense" <?= ($render['density'] ?? 'dense') === 'dense' ? 'selected' : '' ?>>Гъста</option><option value="sparse" <?= ($render['density'] ?? '') === 'sparse' ? 'selected' : '' ?>>Рядка</option></select></label>
       <label class="check"><input type="checkbox" name="per_side" value="1" <?= !empty($render['per_side']) || !$opt ? 'checked' : '' ?>> Цената е за всяка декорирана страна</label>
     <?php elseif ($gcode === 'extras'): ?>
       <label>Как се показва в изгледа
@@ -167,6 +182,20 @@ admin_header($opt ? 'Опция ' . $opt['name'] : 'Нова опция', 'optio
       </label>
     <?php endif; ?>
   </fieldset>
+  <?php if ($gcode === 'extras'):
+    $allExtras = db_all("SELECT o.id, o.name FROM options o WHERE o.group_id = ? AND o.id <> ? ORDER BY o.sort", [$gid, $id]);
+    $allOpts = db_all("SELECT o.id, o.name, g.name AS gname FROM options o JOIN option_groups g ON g.id = o.group_id WHERE o.id <> ? ORDER BY g.sort, o.sort", [$id]);
+    $myRules = $opt ? db_all('SELECT kind, target_id FROM option_rules WHERE option_id = ?', [$id]) : [];
+    $exSel = array_map('intval', array_column(array_filter($myRules, fn($x) => $x['kind'] === 'excludes'), 'target_id'));
+    $reqSel = (int)(array_values(array_filter($myRules, fn($x) => $x['kind'] === 'requires'))[0]['target_id'] ?? 0); ?>
+  <fieldset>
+    <legend>Група в стъпката и правила</legend>
+    <label>Група<select name="subgroup"><?php foreach ($subgroups as $sk => $sl): ?><option value="<?= e($sk) ?>" <?= (string)($v['subgroup'] ?? '') === $sk ? 'selected' : '' ?>><?= e($sl) ?></option><?php endforeach; ?></select></label>
+    <p class="small"><b>Не може заедно с</b> <span class="muted">(при избор другата се маха автоматично; важи и в обратна посока)</span></p>
+    <div class="chk-grid"><?php foreach ($allExtras as $ae): ?><label class="check"><input type="checkbox" name="excludes[]" value="<?= (int)$ae['id'] ?>" <?= in_array((int)$ae['id'], $exSel, true) ? 'checked' : '' ?>> <?= e($ae['name']) ?></label><?php endforeach; ?></div>
+    <label>Изисква <span class="muted small">(без нея опцията е изключена с подсказка)</span><select name="requires"><option value="0">— нищо —</option><?php foreach ($allOpts as $ao): ?><option value="<?= (int)$ao['id'] ?>" <?= $reqSel === (int)$ao['id'] ? 'selected' : '' ?>><?= e($ao['gname'] . ' › ' . $ao['name']) ?></option><?php endforeach; ?></select></label>
+  </fieldset>
+  <?php endif; ?>
 
   <div class="two">
     <label>Ред<input name="sort" type="number" value="<?= (int)$v['sort'] ?>"></label>

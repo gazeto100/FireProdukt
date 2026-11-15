@@ -18,6 +18,8 @@ function geometry_layout(): array
         'band_orn_text' => [0.50, 0.88],  // зона за надпис, когато има орнамент
         'band_orn' => [0.10, 0.42],       // зона за орнамента
         'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
+        // форми със собствена зона за надписа: постамент – над отвора за дърва; кръстато – горната част на плочата
+        'shape_bands' => ['pedestal' => [0.08, 0.46], 'cross' => [0.10, 0.46]],
         'max_chars' => TEXT_MAX_CHARS,
         'max_lines' => TEXT_MAX_LINES,
     ];
@@ -82,6 +84,15 @@ function model_walls(array $m): array
         case 'hex':
             $s = $m['w'] / 2 * 10;
             return array_fill(0, 6, [$s, $h]);
+        case 'octagon':
+            // ширината е диаметърът през ъглите; страната е D·sin(22,5°)
+            return array_fill(0, 8, [$m['w'] * 10 * sin(M_PI / 8), $h]);
+        case 'cross':
+            // надписът е на едната половина на предната плоча (до прореза)
+            return [[$m['w'] * 10 / 2, $h]];
+        case 'ringbowl':
+            // пръстенът под купата: Ø = 0,72·Ø купа, височина = 0,55·общата; надписът е в предната му част
+            return [[$m['w'] * 10 * 0.72 * 0.62, $h * 0.55]];
         case 'grill':
         case 'box':
         default:
@@ -103,9 +114,9 @@ function decorated_walls(array $m, $sides): array
 }
 
 /** Вертикалната зона за надписа на стена с височина $wallH, с поле от ръба */
-function text_band(float $wallH, bool $hasOrnament, array $L): array
+function text_band(float $wallH, bool $hasOrnament, array $L, string $shape = 'box'): array
 {
-    $b = $hasOrnament ? $L['band_orn_text'] : $L['band_plain'];
+    $b = $L['shape_bands'][$shape] ?? ($hasOrnament ? $L['band_orn_text'] : $L['band_plain']);
     $top = max($b[0] * $wallH, $L['edge_mm']);
     $bottom = min($b[1] * $wallH, $wallH - $L['edge_mm']);
     return [$top, max($top + 1, $bottom)];
@@ -116,7 +127,7 @@ function text_band(float $wallH, bool $hasOrnament, array $L): array
  * Размерът се определя от по-дългия ред и от височината на зоната.
  * Връща размер на шрифта, ширини на редовете, височина на буквата (мм) и т.н.; null при невалиден знак.
  */
-function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament): ?array
+function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament, string $shape = 'box'): ?array
 {
     $font = font_metrics()['fonts'][$fontKey] ?? null;
     if (!$lines || !$font || !$walls) {
@@ -147,7 +158,7 @@ function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament
     $upm = $font['upm'];
     $n = count($lines);
     $availW = $minW - 2 * $L['edge_mm'];
-    [$bt, $bb] = text_band($wallH, $hasOrnament, $L);
+    [$bt, $bb] = text_band($wallH, $hasOrnament, $L, $shape);
     $lineH = max(1, $yMax - $yMin);
     $totalH = $n * $lineH + ($n - 1) * $L['line_gap'] * $font['cap'];
     $size = min($availW / (max($adv) / $upm), ($bb - $bt) / ($totalH / $upm));
@@ -203,6 +214,22 @@ function sheet_area_m2(array $m): float
         case 'hex':
             $s = $w / 2;
             return (3 * sqrt(3) / 2 * $s * $s + 6 * $s * $h) / 10000;
+        case 'octagon':
+            $r = $w / 2;
+            return (2 * sqrt(2) * $r * $r + 8 * $w * sin(M_PI / 8) * $h) / 10000;
+        case 'trapezoid':
+            // дъно w×w + 4 трапеца (горе по-широко с 2·t; t = 0,22·h), наклонена височина
+            $t = 0.22 * $h;
+            return ($w * $w + 4 * ($w + $t) * sqrt($h * $h + $t * $t)) / 10000;
+        case 'pedestal':
+            // кутия без дъно + плот + плитка купа Ø = 0,9·w
+            $r = 0.45 * $w;
+            return (4 * $w * $h + $w * $d + M_PI * $r * $r * 1.25) / 10000;
+        case 'cross':
+            return 2 * $w * $h / 10000;
+        case 'ringbowl':
+            $r = $w / 2;
+            return (M_PI * $r * $r * 1.3 + M_PI * 0.72 * $w * 0.55 * $h) / 10000;
         default:
             return ($w * $d + 2 * ($w + $d) * $h) / 10000;
     }
