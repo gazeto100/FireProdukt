@@ -1,0 +1,64 @@
+<?php
+declare(strict_types=1);
+require __DIR__ . '/_init.php';
+require_admin();
+
+// CSV за Excel: UTF-8 с BOM, разделител ";" (българските настройки на Excel ползват десетична запетая)
+$statuses = inquiry_statuses();
+$status = (string)($_GET['status'] ?? '');
+$where = [];
+$params = [];
+if (isset($statuses[$status])) {
+    $where[] = 'i.status = ?';
+    $params[] = $status;
+}
+if (($_GET['anon'] ?? '') === '1') {
+    $where[] = 'i.anonymized_at IS NOT NULL';
+} elseif (($_GET['anon'] ?? '') !== 'all') {
+    $where[] = 'i.anonymized_at IS NULL';
+}
+$sql = 'SELECT i.*, (SELECT GROUP_CONCAT(CONCAT(DATE_FORMAT(n.created_at, "%d.%m.%Y"), ": ", n.body) ORDER BY n.id SEPARATOR " | ") FROM inquiry_notes n WHERE n.inquiry_id = i.id) AS notes
+  FROM inquiries i' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY i.id DESC';
+$rows = db_all($sql, $params);
+
+/** Защита от CSV/формула инжекция в Excel */
+function csv_cell($v): string
+{
+    $v = (string)$v;
+    if ($v !== '' && in_array($v[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+        $v = "'" . $v;
+    }
+    return '"' . str_replace('"', '""', $v) . '"';
+}
+function dec($v): string
+{
+    return $v === null || $v === '' ? '' : str_replace('.', ',', rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.'));
+}
+
+$fname = 'zapitvania-' . date('Y-m-d') . ($status ? '-' . $status : '') . '.csv';
+header('Content-Type: text/csv; charset=utf-8');
+header('Content-Disposition: attachment; filename="' . $fname . '"');
+$out = fopen('php://output', 'w');
+fwrite($out, "\xEF\xBB\xBF");
+$head = ['Номер', 'Дата', 'Статус', 'Име', 'Телефон', 'Имейл', 'Населено място', 'Бележка на клиента', 'Модел', 'Размери (см)', 'Материал', 'Крачета',
+    'Надпис', 'Знаци', 'Шрифт', 'Височина на буквите (мм)', 'Страни', 'Орнамент', 'Екстри', 'Количество', 'Цена от', 'Цена до', 'Тегло (кг/бр.)',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано'];
+fwrite($out, implode(';', array_map('csv_cell', $head)) . "\r\n");
+foreach ($rows as $r) {
+    $c = json_decode($r['config_json'], true) ?: [];
+    $o = $c['options'] ?? [];
+    $m = $c['model'] ?? [];
+    $dims = $m ? (($m['shape'] ?? '') === 'hex' ? 'Ø' . fmt_num($m['w']) . ' × ' . fmt_num($m['h']) : fmt_num($m['w']) . ' × ' . fmt_num($m['d']) . ' × ' . fmt_num($m['h'])) : '';
+    $line = [
+        $r['public_code'], date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
+        $r['name'], $r['phone'], $r['email'], $r['city'], $r['note'],
+        $m['name'] ?? '', $dims, $o['material']['name'] ?? '', $o['legs']['name'] ?? '',
+        $c['text'] ?? '', $c['text_length'] ?? '', ($c['text_length'] ?? 0) ? ($o['font']['name'] ?? '') : '', dec($c['letter_mm'] ?? null),
+        ($c['decorated_walls'] ?? 0) ? ($o['sides']['name'] ?? '') : '', $o['ornament']['name'] ?? '',
+        implode(', ', array_column($o['extras'] ?? [], 'name')), $r['quantity'], dec($r['price_min']), dec($r['price_max']), dec($r['weight_kg']),
+        $r['utm_source'], $r['utm_medium'], $r['utm_campaign'], $r['utm_term'], $r['utm_content'], $r['referrer'], $r['notes'],
+        $r['anonymized_at'] ? date('d.m.Y', strtotime($r['anonymized_at'])) : '',
+    ];
+    fwrite($out, implode(';', array_map('csv_cell', $line)) . "\r\n");
+}
+fclose($out);
