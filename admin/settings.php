@@ -27,7 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'contact_phone' => $in('contact_phone'),
         'currency' => $in('currency') ?: '€',
         'show_prices' => isset($_POST['show_prices']) ? '1' : '0',
-        'min_letter_mm' => $in('min_letter_mm'),
+        'min_letter_2mm' => str_replace(',', '.', $in('min_letter_2mm')),
+        'min_letter_3mm' => str_replace(',', '.', $in('min_letter_3mm')),
+        'text_edge_mm' => str_replace(',', '.', $in('text_edge_mm')),
+        'bridge_mm' => str_replace(',', '.', $in('bridge_mm')),
         'inquiry_rate_limit' => $in('inquiry_rate_limit'),
         'mail_from' => $in('mail_from'),
         'mail_from_name' => $in('mail_from_name'),
@@ -40,7 +43,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ];
     if ($vals['notify_email'] !== '' && !filter_var($vals['notify_email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Невалиден имейл за известия.';
     if ($vals['mail_from'] !== '' && !filter_var($vals['mail_from'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Невалиден имейл в полето „От (From)“.';
-    if (!is_numeric($vals['min_letter_mm']) || (float)$vals['min_letter_mm'] < 5 || (float)$vals['min_letter_mm'] > 200) $errors[] = 'Минималната височина на буквата трябва да е между 5 и 200 мм.';
+    foreach (['min_letter_2mm' => 'Минималната буква за 2 мм', 'min_letter_3mm' => 'Минималната буква за 3 мм'] as $kk => $lab) {
+        if (!is_numeric($vals[$kk]) || (float)$vals[$kk] < 5 || (float)$vals[$kk] > 200) $errors[] = "$lab трябва да е между 5 и 200 мм.";
+    }
+    if (!is_numeric($vals['text_edge_mm']) || (float)$vals['text_edge_mm'] < 5 || (float)$vals['text_edge_mm'] > 150) $errors[] = 'Полето от ръба трябва да е между 5 и 150 мм.';
+    if (!is_numeric($vals['bridge_mm']) || (float)$vals['bridge_mm'] < 1 || (float)$vals['bridge_mm'] > 20) $errors[] = 'Ширината на мостчето трябва да е между 1 и 20 мм.';
     if (!ctype_digit($vals['inquiry_rate_limit']) || (int)$vals['inquiry_rate_limit'] < 1) $errors[] = 'Лимитът за запитвания трябва да е цяло число ≥ 1.';
     if (!ctype_digit($vals['smtp_port'])) $errors[] = 'Невалиден SMTP порт.';
     if ($vals['meta_pixel_id'] !== '' && !preg_match('/^\d{6,20}$/', $vals['meta_pixel_id'])) $errors[] = 'Meta Pixel ID съдържа само цифри.';
@@ -86,7 +93,16 @@ admin_header('Настройки', 'settings');
     <h2>Конфигуратор</h2>
     <label class="check"><input type="checkbox" name="show_prices" value="1" <?= ($s['show_prices'] ?? '0') === '1' ? 'checked' : '' ?>> Показвай ориентировъчна цена „от–до“ на клиентите</label>
     <label>Валута<input name="currency" value="<?= $v('currency', '€') ?>" maxlength="8"></label>
-    <label>Минимална височина на буквата (мм)<input name="min_letter_mm" type="number" step="0.5" min="5" max="200" value="<?= $v('min_letter_mm', '30') ?>"></label>
+    <p class="small"><b>Правила за надписа.</b> Единственото, което спира надписа, е минималната височина на буквата (зависи от дебелината на материала).</p>
+    <div class="two">
+      <label>Мин. височина на буквата – 2 мм (мм)<input name="min_letter_2mm" type="number" step="0.5" min="5" max="200" value="<?= $v('min_letter_2mm', '30') ?>"></label>
+      <label>Мин. височина на буквата – 3 мм (мм)<input name="min_letter_3mm" type="number" step="0.5" min="5" max="200" value="<?= $v('min_letter_3mm', '35') ?>"></label>
+    </div>
+    <div class="two">
+      <label>Поле от ръба на панела (мм)<input name="text_edge_mm" type="number" step="1" min="5" max="150" value="<?= $v('text_edge_mm', '25') ?>"></label>
+      <label>Мин. ширина на мостче (мм)<input name="bridge_mm" type="number" step="0.5" min="1" max="20" value="<?= $v('bridge_mm', '3') ?>"></label>
+    </div>
+    <p class="muted small">Материал до 2,5 мм ползва стойността за 2 мм, по-дебел – тази за 3 мм. Технически таван: 40 знака (не се показва на клиента).</p>
     <label>Максимум запитвания на час от един IP<input name="inquiry_rate_limit" type="number" min="1" value="<?= $v('inquiry_rate_limit', '30') ?>"></label>
   </section>
 

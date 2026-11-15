@@ -4,32 +4,74 @@ declare(strict_types=1);
 /**
  * Геометрия и разположение на надписа.
  * ВАЖНО: същата логика е в assets/js/geometry.js – при промяна сменете и двете.
- * Константите се подават на браузъра от тук, за да няма разминаване.
+ * Константите (вкл. настройките от админа) се подават на браузъра от тук, за да няма разминаване.
  */
+const TEXT_MAX_CHARS = 40;   // технически таван срещу злоупотреба (не се показва на клиента)
+const TEXT_MAX_LINES = 2;
+
 function geometry_layout(): array
 {
     return [
-        'margin_ratio' => 0.08,     // страничен отстъп като част от ширината на стената
-        'margin_min_mm' => 25,      // но не по-малко от това
-        'band_plain' => [0.22, 0.80],     // зона за надпис без орнамент (от горния ръб, част от височината)
+        'edge_mm' => max(5.0, (float)setting('text_edge_mm', '25')),   // поле от ръба на панела (всички страни)
+        'bridge_mm' => max(1.0, (float)setting('bridge_mm', '3')),     // ширина на мостчетата в затворените букви
+        'band_plain' => [0.22, 0.80],     // зона за надпис без орнамент (част от височината, от горния ръб)
         'band_orn_text' => [0.50, 0.88],  // зона за надпис, когато има орнамент
         'band_orn' => [0.10, 0.42],       // зона за орнамента
-        'bridges' => [0.30, 0.70],  // мостчета: позиции като част от височината на главна буква
-        'bridge_ratio' => 0.08,     // дебелина на мостчето спрямо височината на главна буква
-        'bridge_min_mm' => 3,
+        'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
+        'max_chars' => TEXT_MAX_CHARS,
+        'max_lines' => TEXT_MAX_LINES,
     ];
 }
 
-/** Нормализира надписа: без водещи/крайни интервали, единични интервали между думите */
-function normalize_text(string $t): string
+/** Минимална височина на буквата според дебелината на материала (настройки за 2 мм и 3 мм) */
+function min_letter_for_thickness(float $t): float
 {
-    $t = preg_replace('/\s+/u', ' ', $t) ?? '';
-    return trim($t);
+    return $t <= 2.5 ? (float)setting('min_letter_2mm', '30') : (float)setting('min_letter_3mm', '35');
 }
 
+/** Нормализира надписа: до 2 реда, всеки без излишни интервали. Връща масив с редовете. */
+function text_lines(string $t): array
+{
+    $t = str_replace(["\r\n", "\r"], "\n", $t);
+    $lines = [];
+    foreach (explode("\n", $t) as $ln) {
+        $ln = trim(preg_replace('/[ \t\x{00A0}]+/u', ' ', $ln) ?? '');
+        if ($ln !== '') {
+            $lines[] = $ln;
+        }
+    }
+    if (count($lines) > TEXT_MAX_LINES) {
+        $lines = [$lines[0], implode(' ', array_slice($lines, 1))];
+    }
+    return $lines;
+}
+
+function normalize_text(string $t): string
+{
+    return implode("\n", text_lines($t));
+}
+
+/** Брой знаци без разделителя между редовете */
 function text_length(string $t): int
 {
-    return mb_strlen($t);
+    return mb_strlen(str_replace("\n", '', $t));
+}
+
+/** Разделя един ред на два при интервала, най-близък до средата (по брой знаци). null ако няма интервал. */
+function split_two_lines(string $line): ?array
+{
+    $chars = mb_str_split($line);
+    $mid = count($chars) / 2;
+    $best = null;
+    foreach ($chars as $i => $c) {
+        if ($c === ' ' && ($best === null || abs($i - $mid) < abs($best - $mid))) {
+            $best = $i;
+        }
+    }
+    if ($best === null) {
+        return null;
+    }
+    return [trim(mb_substr($line, 0, $best)), trim(mb_substr($line, $best + 1))];
 }
 
 /** Стени на модела в мм: [ширина, височина] в реда отпред, дясно, отзад, ляво */
@@ -60,59 +102,68 @@ function decorated_walls(array $m, $sides): array
     return array_slice($walls, 0, $n);
 }
 
-/**
- * Побира надписа в най-тясната декорирана стена.
- * Връща размер на шрифта (мм), ширина, височина на буквата (мм) и дали има малки букви.
- */
-function text_fit(string $text, string $fontKey, array $walls, bool $hasOrnament): ?array
+/** Вертикалната зона за надписа на стена с височина $wallH, с поле от ръба */
+function text_band(float $wallH, bool $hasOrnament, array $L): array
 {
-    $fm = font_metrics();
-    $font = $fm['fonts'][$fontKey] ?? null;
-    if ($text === '' || !$font || !$walls) {
+    $b = $hasOrnament ? $L['band_orn_text'] : $L['band_plain'];
+    $top = max($b[0] * $wallH, $L['edge_mm']);
+    $bottom = min($b[1] * $wallH, $wallH - $L['edge_mm']);
+    return [$top, max($top + 1, $bottom)];
+}
+
+/**
+ * Побира надписа (1 или 2 реда) в най-тясната декорирана стена.
+ * Размерът се определя от по-дългия ред и от височината на зоната.
+ * Връща размер на шрифта, ширини на редовете, височина на буквата (мм) и т.н.; null при невалиден знак.
+ */
+function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament): ?array
+{
+    $font = font_metrics()['fonts'][$fontKey] ?? null;
+    if (!$lines || !$font || !$walls) {
         return null;
     }
     $L = geometry_layout();
     $minW = min(array_map(fn($w) => $w[0], $walls));
     $wallH = $walls[0][1];
-
-    $sumAdv = 0;
+    $adv = [];
     $yMax = 0;
     $yMin = 0;
     $hasLower = false;
-    foreach (mb_str_split($text) as $ch) {
-        $g = $font['g'][$ch] ?? null;
-        if (!$g) {
-            return null;
-        }
-        $sumAdv += $g[0];
-        $yMax = max($yMax, $g[2]);
-        $yMin = min($yMin, $g[1]);
-        if (mb_strtoupper($ch) !== $ch) {
-            $hasLower = true;
+    foreach ($lines as $i => $ln) {
+        $adv[$i] = 0;
+        foreach (mb_str_split($ln) as $ch) {
+            $g = $font['g'][$ch] ?? null;
+            if (!$g) {
+                return null;
+            }
+            $adv[$i] += $g[0];
+            $yMax = max($yMax, $g[2]);
+            $yMin = min($yMin, $g[1]);
+            if (mb_strtoupper($ch) !== $ch) {
+                $hasLower = true;
+            }
         }
     }
     $upm = $font['upm'];
-    $margin = max($L['margin_min_mm'], $L['margin_ratio'] * $minW);
-    $availW = $minW - 2 * $margin;
-    $band = $hasOrnament ? $L['band_orn_text'] : $L['band_plain'];
-    $bandH = ($band[1] - $band[0]) * $wallH;
-
-    $sizeW = $availW / ($sumAdv / $upm);
-    $sizeH = $bandH / (max(1, $yMax - $yMin) / $upm);
-    $size = min($sizeW, $sizeH);
-
-    $letter = ($hasLower ? $font['xh'] : $font['cap']) * $size / $upm;
+    $n = count($lines);
+    $availW = $minW - 2 * $L['edge_mm'];
+    [$bt, $bb] = text_band($wallH, $hasOrnament, $L);
+    $lineH = max(1, $yMax - $yMin);
+    $totalH = $n * $lineH + ($n - 1) * $L['line_gap'] * $font['cap'];
+    $size = min($availW / (max($adv) / $upm), ($bb - $bt) / ($totalH / $upm));
+    $k = $size / $upm;
     return [
         'size_mm' => round($size, 2),
-        'width_mm' => round($sumAdv * $size / $upm, 2),
-        'letter_mm' => round($letter, 1),
-        'cap_mm' => round($font['cap'] * $size / $upm, 1),
+        'widths_mm' => array_map(fn($a) => round($a * $k, 2), $adv),
+        'letter_mm' => round(($hasLower ? $font['xh'] : $font['cap']) * $k, 1),
+        'cap_mm' => round($font['cap'] * $k, 1),
         'has_lower' => $hasLower,
+        'lines' => $n,
     ];
 }
 
 /**
- * Ориентир за админа: колко ГЛАВНИ букви се побират при минималната височина
+ * Ориентир за админа: колко ГЛАВНИ букви се побират на един ред при дадена минимална височина
  * (по средната ширина на българските главни букви) на най-тясната от дадените стени.
  */
 function text_capacity_estimate(array $walls, string $fontKey, float $minMm): ?int
@@ -123,7 +174,7 @@ function text_capacity_estimate(array $walls, string $fontKey, float $minMm): ?i
     }
     $L = geometry_layout();
     $minW = min(array_map(fn($w) => $w[0], $walls));
-    $availW = $minW - 2 * max($L['margin_min_mm'], $L['margin_ratio'] * $minW);
+    $availW = $minW - 2 * $L['edge_mm'];
     $sum = 0;
     $n = 0;
     foreach (mb_str_split('АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ') as $c) {
@@ -135,7 +186,6 @@ function text_capacity_estimate(array $walls, string $fontKey, float $minMm): ?i
     if (!$n) {
         return null;
     }
-    // ширина на една буква при минималната височина (в мм)
     $perChar = ($sum / $n) * $minMm / $font['cap'];
     return max(0, (int)floor($availW / $perChar));
 }

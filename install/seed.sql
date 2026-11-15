@@ -4,7 +4,10 @@ INSERT INTO settings (k, v) VALUES
  ('site_name', 'FireProdukt'),
  ('currency', '€'),
  ('show_prices', '0'),
- ('min_letter_mm', '30'),
+ ('min_letter_2mm', '30'),
+ ('min_letter_3mm', '35'),
+ ('text_edge_mm', '25'),
+ ('bridge_mm', '3'),
  ('inquiry_rate_limit', '30'),
  ('contact_phone', ''),
  ('meta_pixel_id', ''),
@@ -16,7 +19,7 @@ INSERT INTO settings (k, v) VALUES
  ('smtp_secure', 'tls'),
  ('smtp_user', ''),
  ('smtp_pass', ''),
- ('schema_version', '3')
+ ('schema_version', '4')
 ON DUPLICATE KEY UPDATE k = k;
 
 INSERT INTO product_types (code, name, hint, sort) VALUES
@@ -156,3 +159,6 @@ JOIN options o ON o.id = mo.option_id
 JOIN option_groups g ON g.id = o.group_id
 SET mo.price_min = 0, mo.price_max = 0
 WHERE m.code = 'grill_stand' AND g.code = 'legs';
+
+-- Етап 3: броят знаци вече не е ограничение (само технически таван 40)
+UPDATE models SET max_chars = 40;

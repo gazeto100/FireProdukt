@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function run_migrations(): void
 {
@@ -35,6 +35,16 @@ function run_migrations(): void
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_inq (inquiry_id),
                 CONSTRAINT fk_upl_inq FOREIGN KEY (inquiry_id) REFERENCES inquiries(id) ON DELETE CASCADE
               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
+        if ($v < 4) {
+            // етап 3: минимална буква по дебелина, поле от ръба, ширина на мостчето
+            $old = (string)setting('min_letter_mm', '30');
+            $st = db()->prepare('INSERT IGNORE INTO settings (k, v) VALUES (?, ?)');
+            foreach (['min_letter_2mm' => $old, 'min_letter_3mm' => (string)((float)$old + 5), 'text_edge_mm' => '25', 'bridge_mm' => '3'] as $k => $val) {
+                $st->execute([$k, $val]);
+            }
+            // max_chars вече е само технически таван
+            db()->exec('UPDATE models SET max_chars = 40');
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {

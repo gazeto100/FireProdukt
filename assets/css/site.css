@@ -299,3 +299,11 @@ h1, h2, h3 { font-family: var(--head); font-weight: 400; line-height: 1.2; margi
 @media (min-width: 700px) { .two-col { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 900px) { .gallery-big { grid-template-columns: repeat(3, 1fr); } .card-form { padding: 26px 28px; } }
 .g-note { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: #fff1e6; color: #b04a00; font-size: .8rem; font-weight: 700; align-self: flex-start; }
+
+/* Надпис: поле, ред със състоянието, действия */
+#txt { resize: vertical; min-height: 64px; line-height: 1.35; }
+.txt-status { margin: 6px 0 0; font-size: .9rem; color: var(--ink-2); }
+.txt-status.ok { color: var(--ok); font-weight: 600; }
+.txt-status.bad { color: var(--err); font-weight: 600; }
+.txt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.txt-actions .btn { white-space: normal; text-align: left; }

@@ -77,33 +77,13 @@ function validate_config(array $in, array $cat): array
     $walls = decorated_walls($model, $sidesVal);
     $fit = null;
 
+    $thickness = isset($chosen['material']['code']) ? (float)($byGroup['material'][$chosen['material']['code']]['opt']['render']['thickness_mm'] ?? 2) : 2.0;
+    $minMm = min_letter_for_thickness($thickness);
     if ($text !== '') {
-        $len = text_length($text);
-        if ($len > $model['max_chars']) {
-            $errors['text'] = sprintf('Надписът е %d знака, а за този модел са позволени до %d.', $len, $model['max_chars']);
-        }
-        $allowed = $cat['fonts']['allowed'] ?? '';
-        $bad = [];
-        foreach (mb_str_split($text) as $ch) {
-            if (mb_strpos($allowed, $ch) === false) {
-                $bad[$ch] = true;
-            }
-        }
-        if ($bad) {
-            $errors['text'] = 'Тези знаци не могат да се изрежат: ' . implode(' ', array_keys($bad));
-        }
-        if (!isset($errors['text'])) {
-            $fit = text_fit($text, $fontKey, $walls, $pattern !== null);
-            $minMm = (float)$cat['settings']['min_letter_mm'];
-            if (!$fit) {
-                $errors['text'] = 'Надписът не може да бъде разположен.';
-            } elseif ($fit['letter_mm'] + 0.05 < $minMm) {
-                $errors['text'] = sprintf(
-                    'Буквите стават %s мм, а минимумът за изрязване е %s мм. Съкратете надписа, изберете по-тесен шрифт или главни букви.',
-                    number_format($fit['letter_mm'], 1, ',', ''),
-                    rtrim(rtrim(number_format($minMm, 1, ',', ''), '0'), ',')
-                );
-            }
+        $chk = text_check(text_lines($text), $fontKey, $walls, $pattern !== null, $minMm);
+        $fit = $chk['fit'];
+        if ($chk['error'] !== null) {
+            $errors['text'] = $chk['error'];
         }
     }
 
@@ -132,6 +112,8 @@ function validate_config(array $in, array $cat): array
         'text_length' => text_length($text),
         'font' => $fontKey,
         'letter_mm' => $fit['letter_mm'] ?? null,
+        'text_lines' => $fit['lines'] ?? 0,
+        'min_letter_mm' => $minMm,
         'decorated_walls' => $isDecorated ? count($walls) : 0,
         'quantity' => (int)$qty,
         'weight_kg' => $weight['kg'],
@@ -139,6 +121,41 @@ function validate_config(array $in, array $cat): array
     ];
 
     return ['errors' => $errors, 'config' => $config, 'price' => $price, 'weight' => $weight, 'model' => $model];
+}
+
+/**
+ * Единственото правило, което спира надписа: минималната височина на буквата.
+ * (Плюс технически таван 40 знака и само позволени знаци.) Огледало на checkText() в geometry.js.
+ * Връща ['error' => ?string, 'fit' => ?array, 'split' => ?array (предложение за 2 реда)]
+ */
+function text_check(array $lines, string $fontKey, array $walls, bool $hasOrnament, float $minMm): array
+{
+    $text = implode("\n", $lines);
+    $len = text_length($text);
+    if ($len > TEXT_MAX_CHARS) {
+        return ['error' => 'Надписът е твърде дълъг – до ' . TEXT_MAX_CHARS . ' знака.', 'fit' => null, 'split' => null];
+    }
+    $allowed = font_metrics()['allowed'] ?? '';
+    $bad = [];
+    foreach (mb_str_split(str_replace("\n", '', $text)) as $ch) {
+        if (mb_strpos($allowed, $ch) === false) {
+            $bad[$ch] = true;
+        }
+    }
+    if ($bad) {
+        return ['error' => 'Тези знаци не могат да се изрежат: ' . implode(' ', array_keys($bad)), 'fit' => null, 'split' => null];
+    }
+    $fit = text_fit($lines, $fontKey, $walls, $hasOrnament);
+    if (!$fit) {
+        return ['error' => 'Надписът не може да бъде разположен.', 'fit' => null, 'split' => null];
+    }
+    if ($fit['letter_mm'] + 0.05 >= $minMm) {
+        return ['error' => null, 'fit' => $fit, 'split' => null];
+    }
+    $split = count($lines) === 1 ? split_two_lines($lines[0]) : null;
+    $err = sprintf('Буквите стават %d мм, а минимумът е %s мм. ', (int)floor($fit['letter_mm']), fmt_num($minMm))
+        . ($split ? 'Съкрати надписа, избери по-тесен шрифт или го раздели на два реда.' : 'Съкрати надписа или избери по-тесен шрифт.');
+    return ['error' => $err, 'fit' => $fit, 'split' => $split];
 }
 
 /** Четим списък на конфигурацията за имейли и админа */
@@ -169,7 +186,7 @@ function config_lines(array $cfg, array $cat): array
         }
     }
     if ($cfg['text'] !== '') {
-        $lines['Надпис'] = '„' . $cfg['text'] . '“ (' . $cfg['text_length'] . ' знака)';
+        $lines['Надпис'] = '„' . str_replace("\n", ' / ', $cfg['text']) . '“ (' . $cfg['text_length'] . ' знака' . (($cfg['text_lines'] ?? 1) > 1 ? ', на 2 реда' : '') . ')';
         $lines['Шрифт'] = $cfg['options']['font']['name'] ?? '';
         $lines['Височина на буквите'] = $cfg['letter_mm'] !== null ? '≈ ' . number_format((float)$cfg['letter_mm'], 0, ',', '') . ' мм' : '—';
     } elseif (!empty($cfg['text_removed'])) {

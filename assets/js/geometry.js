@@ -1,19 +1,33 @@
 /* Геометрия, побиране на надписа, цена и тегло.
- * ВАЖНО: огледало на inc/geometry.php и inc/pricing.php – при промяна сменете и двете.
+ * ВАЖНО: огледало на inc/geometry.php, inc/validate.php (text_check) и inc/pricing.php – при промяна сменете и двете.
  */
 (function (global) {
   'use strict';
 
-  function normalizeText(t) {
-    return String(t || '').replace(/\s+/g, ' ').trim();
+  function chars(t) { return Array.from(t); }
+
+  /** До 2 реда, всеки без излишни интервали (като text_lines() в PHP) */
+  function textLines(t, L) {
+    var max = (L && L.max_lines) || 2;
+    var lines = String(t || '').replace(/\r\n?/g, '\n').split('\n').map(function (ln) {
+      return ln.replace(/[ \t ]+/g, ' ').trim();
+    }).filter(function (ln) { return ln !== ''; });
+    if (lines.length > max) lines = [lines[0], lines.slice(1).join(' ')];
+    return lines;
+  }
+  function normalizeText(t, L) { return textLines(t, L).join('\n'); }
+  function textLength(t) { return chars(String(t).replace(/\n/g, '')).length; }
+
+  /** Разделя ред на два при интервала, най-близък до средата (по брой знаци); null ако няма интервал */
+  function splitTwoLines(line) {
+    var c = chars(line), mid = c.length / 2, best = -1;
+    c.forEach(function (ch, i) { if (ch === ' ' && (best < 0 || Math.abs(i - mid) < Math.abs(best - mid))) best = i; });
+    if (best < 0) return null;
+    return [c.slice(0, best).join('').trim(), c.slice(best + 1).join('').trim()];
   }
 
-  function chars(t) {
-    return Array.from(t);
-  }
-
-  function textLength(t) {
-    return chars(t).length;
+  function minLetterFor(thickness, S) {
+    return thickness <= 2.5 ? S.min_letter_2mm : S.min_letter_3mm;
   }
 
   /** Стени в мм: [ширина, височина] – отпред, дясно, отзад, ляво */
@@ -34,71 +48,75 @@
     return walls.slice(0, n);
   }
 
-  /** Побира надписа в най-тясната декорирана стена (същото като text_fit() в PHP) */
-  function textFit(text, fontKey, walls, hasOrnament, fonts, L) {
+  /** Вертикална зона за надписа с поле от ръба */
+  function textBand(wallH, hasOrn, L) {
+    var b = hasOrn ? L.band_orn_text : L.band_plain;
+    var top = Math.max(b[0] * wallH, L.edge_mm), bottom = Math.min(b[1] * wallH, wallH - L.edge_mm);
+    return [top, Math.max(top + 1, bottom)];
+  }
+
+  /** Побира 1–2 реда в най-тясната декорирана стена (същото като text_fit() в PHP) */
+  function textFit(lines, fontKey, walls, hasOrn, fonts, L) {
     var font = fonts.fonts[fontKey];
-    if (!text || !font || !walls.length) return null;
+    if (typeof lines === 'string') lines = textLines(lines, L);
+    if (!lines.length || !font || !walls.length) return null;
     var minW = Math.min.apply(null, walls.map(function (w) { return w[0]; }));
-    var wallH = walls[0][1];
-    var sumAdv = 0, yMax = 0, yMin = 0, hasLower = false, list = chars(text);
-    for (var i = 0; i < list.length; i++) {
-      var ch = list[i], g = font.g[ch];
-      if (!g) return null;
-      sumAdv += g[0];
-      yMax = Math.max(yMax, g[2]);
-      yMin = Math.min(yMin, g[1]);
-      if (ch.toUpperCase() !== ch) hasLower = true;
+    var wallH = walls[0][1], adv = [], yMax = 0, yMin = 0, hasLower = false;
+    for (var i = 0; i < lines.length; i++) {
+      adv[i] = 0;
+      var list = chars(lines[i]);
+      for (var j = 0; j < list.length; j++) {
+        var ch = list[j], g = font.g[ch];
+        if (!g) return null;
+        adv[i] += g[0];
+        yMax = Math.max(yMax, g[2]);
+        yMin = Math.min(yMin, g[1]);
+        if (ch.toUpperCase() !== ch) hasLower = true;
+      }
     }
-    var upm = font.upm;
-    var margin = Math.max(L.margin_min_mm, L.margin_ratio * minW);
-    var availW = minW - 2 * margin;
-    var band = hasOrnament ? L.band_orn_text : L.band_plain;
-    var bandH = (band[1] - band[0]) * wallH;
-    var size = Math.min(availW / (sumAdv / upm), bandH / (Math.max(1, yMax - yMin) / upm));
+    var upm = font.upm, n = lines.length;
+    var availW = minW - 2 * L.edge_mm;
+    var band = textBand(wallH, hasOrn, L);
+    var lineH = Math.max(1, yMax - yMin), gap = L.line_gap * font.cap;
+    var totalH = n * lineH + (n - 1) * gap;
+    var size = Math.min(availW / (Math.max.apply(null, adv) / upm), (band[1] - band[0]) / (totalH / upm));
     var k = size / upm;
     return {
       size_mm: size,
-      width_mm: sumAdv * k,
+      widths_mm: adv.map(function (a) { return a * k; }),
       letter_mm: Math.round(((hasLower ? font.xh : font.cap) * k) * 10) / 10,
       cap_mm: font.cap * k,
+      xh_mm: font.xh * k,
       has_lower: hasLower,
+      lines: lines.slice(),
       y_max: yMax * k,
       y_min: yMin * k,
+      line_h: lineH * k,
+      gap: gap * k,
       band: band
     };
   }
 
-  /* Средна ширина на буква (главни или малки български букви) – за прогноза на оставащите знаци */
-  var avgCache = {};
-  function avgAdvance(font, fontKey, lower) {
-    var key = fontKey + (lower ? 'l' : 'u');
-    if (avgCache[key]) return avgCache[key];
-    var up = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ', set = lower ? up.toLowerCase() : up, sum = 0, n = 0;
-    chars(set).forEach(function (c) { if (font.g[c]) { sum += font.g[c][0]; n++; } });
-    return (avgCache[key] = n ? sum / n : font.upm * 0.6);
+  /**
+   * Единственото правило, което спира надписа: минималната височина (плюс технически таван и позволени знаци).
+   * Връща { error, kind: 'ok'|'small'|'chars'|'long', fit, split }
+   */
+  function checkText(lines, fontKey, walls, hasOrn, minMm, fonts, L) {
+    var text = lines.join('\n');
+    if (textLength(text) > L.max_chars) return { kind: 'long', error: 'Надписът е твърде дълъг – до ' + L.max_chars + ' знака.', fit: null, split: null };
+    var bad = [];
+    chars(text.replace(/\n/g, '')).forEach(function (ch) { if (fonts.allowed.indexOf(ch) < 0 && bad.indexOf(ch) < 0) bad.push(ch); });
+    if (bad.length) return { kind: 'chars', error: 'Тези знаци не могат да се изрежат: ' + bad.join(' '), fit: null, split: null };
+    var fit = textFit(lines, fontKey, walls, hasOrn, fonts, L);
+    if (!fit) return { kind: 'chars', error: 'Надписът не може да бъде разположен.', fit: null, split: null };
+    if (fit.letter_mm + 0.05 >= minMm) return { kind: 'ok', error: null, fit: fit, split: null };
+    var split = lines.length === 1 ? splitTwoLines(lines[0]) : null;
+    var err = 'Буквите стават ' + Math.floor(fit.letter_mm) + ' мм, а минимумът е ' + fmt(minMm) + ' мм. ' +
+      (split ? 'Съкрати надписа, избери по-тесен шрифт или го раздели на два реда.' : 'Съкрати надписа или избери по-тесен шрифт.');
+    return { kind: 'small', error: err, fit: fit, split: split };
   }
 
-  /**
-   * Колко още знака се побират, преди буквите да паднат под минималната височина.
-   * Прогноза по средната ширина на буква за избрания шрифт; ограничава се и от max_chars на модела.
-   */
-  function textCapacity(text, fontKey, walls, fonts, L, minMm, maxChars) {
-    var font = fonts.fonts[fontKey];
-    if (!font || !walls.length) return null;
-    var list = chars(text), sumAdv = 0, hasLower = false;
-    list.forEach(function (ch) {
-      var g = font.g[ch];
-      sumAdv += g ? g[0] : font.upm * 0.6;
-      if (ch.toUpperCase() !== ch) hasLower = true;
-    });
-    var minW = Math.min.apply(null, walls.map(function (w) { return w[0]; }));
-    var availW = minW - 2 * Math.max(L.margin_min_mm, L.margin_ratio * minW);
-    var ref = hasLower ? font.xh : font.cap;
-    var maxUnits = availW * ref / minMm;            // обща ширина (в единици на шрифта) при минималната височина
-    var byHeight = Math.floor((maxUnits - sumAdv) / avgAdvance(font, fontKey, hasLower));
-    var byModel = maxChars - list.length;
-    return { remaining: Math.min(byHeight, byModel), byHeight: byHeight, byModel: byModel, limitedBy: byHeight <= byModel ? 'height' : 'model' };
-  }
+  function fmt(n) { return String(Math.round(n * 10) / 10).replace('.', ','); }
 
   function sheetArea(m) {
     if (m.sheet_area_m2) return m.sheet_area_m2;
@@ -142,13 +160,17 @@
   }
 
   global.FPGeo = {
+    chars: chars,
+    textLines: textLines,
     normalizeText: normalizeText,
     textLength: textLength,
-    chars: chars,
+    splitTwoLines: splitTwoLines,
+    minLetterFor: minLetterFor,
     modelWalls: modelWalls,
     decoratedWalls: decoratedWalls,
+    textBand: textBand,
     textFit: textFit,
-    textCapacity: textCapacity,
+    checkText: checkText,
     sheetArea: sheetArea,
     calcPrice: calcPrice,
     calcWeight: calcWeight

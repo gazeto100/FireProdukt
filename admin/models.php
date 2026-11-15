@@ -41,11 +41,11 @@ admin_header('Модели', 'models');
   <h1>Модели</h1>
   <a class="a-btn" href="model_edit.php">+ Нов модел</a>
 </div>
-<p class="muted small">Размерите, лимитът за знаци и базовата цена се редактират тук. Кои опции важат за модела и на каква цена – в „Съвместимост“.</p>
+<p class="muted small">Размерите и базовата цена се редактират тук. Кои опции важат за модела и на каква цена – в „Съвместимост“.</p>
 
 <div class="table-wrap card">
 <table class="grid">
-  <thead><tr><th>Модел</th><th>Вид</th><th>Форма</th><th>Размери, см</th><th>Знаци</th><th>Цена</th><th>Опции</th><th></th></tr></thead>
+  <thead><tr><th>Модел</th><th>Вид</th><th>Форма</th><th>Размери, см</th><th>Цена</th><th>Опции</th><th></th></tr></thead>
   <tbody>
   <?php foreach ($models as $m): ?>
     <tr class="<?= $m['active'] ? '' : 'inactive' ?>">
@@ -53,7 +53,6 @@ admin_header('Модели', 'models');
       <td><?= e($m['type_name']) ?></td>
       <td class="small"><?= e(explode(' (', $shapes[$m['shape']] ?? $m['shape'])[0]) ?></td>
       <td><?= $m['shape'] === 'hex' ? 'Ø' . e(fmt_num($m['width_cm'])) . ' × ' . e(fmt_num($m['height_cm'])) : e(fmt_num($m['width_cm'])) . ' × ' . e(fmt_num($m['depth_cm'])) . ' × ' . e(fmt_num($m['height_cm'])) ?></td>
-      <td><?= (int)$m['max_chars'] ?></td>
       <td class="nowrap"><?= e(price_range_text((float)$m['price_min'], (float)$m['price_max'])) ?></td>
       <td><a href="compat.php?model=<?= (int)$m['id'] ?>"><?= (int)$m['opts'] ?></a><?= $m['opts'] ? '' : ' <span class="warn">⚠</span>' ?></td>
       <td><a href="model_edit.php?id=<?= (int)$m['id'] ?>">Редактирай</a></td>

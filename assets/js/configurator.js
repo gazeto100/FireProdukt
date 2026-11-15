@@ -83,31 +83,23 @@
   /* ---------- изчисления ---------- */
   function compute() {
     var m = model();
-    var text = G.normalizeText(state.text);
+    var lines = G.textLines(state.text, L);
+    var text = lines.join('\n');
     var fontKey = renderParam('font', 'font', 'russo');
     var sides = renderParam('sides', 'sides', 1);
     var pattern = renderParam('ornament', 'pattern', null);
     var walls = G.decoratedWalls(m, sides);
-    var res = { m: m, text: text, fontKey: fontKey, sides: sides, pattern: pattern, walls: walls, fit: null, error: '' };
+    var minMm = G.minLetterFor(parseFloat(renderParam('material', 'thickness_mm', 2)) || 2, SET);
+    var res = { m: m, text: text, lines: lines, fontKey: fontKey, sides: sides, pattern: pattern, walls: walls, fit: null, error: '', minMm: minMm };
     if (text) {
-      var len = G.textLength(text), bad = [];
-      G.chars(text).forEach(function (ch) { if (FONTS.allowed.indexOf(ch) < 0 && bad.indexOf(ch) < 0) bad.push(ch); });
-      if (bad.length) {
-        res.error = 'Тези знаци не могат да се изрежат: ' + bad.join(' ');
-      } else {
-        res.fit = G.textFit(text, fontKey, walls, !!pattern, FONTS, L);
-        if (len > m.max_chars) {
-          res.error = 'Надписът е ' + len + ' знака, а за този модел са позволени до ' + m.max_chars + '.';
-          res.errorType = 'max';
-        } else if (res.fit && res.fit.letter_mm + 0.05 < SET.min_letter_mm) {
-          res.error = 'Буквите стават ' + num(res.fit.letter_mm) + ' мм, а минимумът за изрязване е ' + num(SET.min_letter_mm) +
-            ' мм. Съкратете надписа, изберете по-тесен шрифт или главни букви.';
-          res.errorType = 'small';
-          res.betterFont = bestFont(m, text, walls, !!pattern, fontKey);
-        }
-      }
+      // единственото правило, което спира надписа, е минималната височина на буквата
+      var chk = G.checkText(lines, fontKey, walls, !!pattern, minMm, FONTS, L);
+      res.fit = chk.fit;
+      res.error = chk.error || '';
+      res.errorType = chk.kind === 'ok' ? '' : chk.kind;
+      res.split = chk.split;
+      if (chk.kind === 'small') res.betterFont = bestFont(m, lines, walls, !!pattern, fontKey);
     }
-    res.cap = G.textCapacity(text, fontKey, walls, FONTS, L, SET.min_letter_mm, m.max_chars);
     var sel = selected(m);
     var isDec = !!text || !!pattern;
     res.decoratedCount = isDec ? walls.length : 0;
@@ -137,7 +129,7 @@
       list.forEach(function (x) { if (x.opt.code === c) ex[x.opt.render.extra || c] = true; });
     });
     var o = {
-      model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey,
+      model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey, fonts: FONTS,
       pattern: r.pattern, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name
     };
     for (var k in extra || {}) o[k] = extra[k];
@@ -192,11 +184,11 @@
       }).join('') + '</div>');
     }
     // 5. Надпис
-    var body = '<div class="field"><label for="txt">Вашият надпис <span class="muted">(по желание)</span></label>' +
-      '<input id="txt" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" value="' + esc(state.text) + '" placeholder="напр. СЕМЕЙСТВО ИВАНОВИ">' +
-      '<div class="txt-meta"><span id="txtCount"></span><span id="txtLetter"></span></div>' +
-      '<p class="err" id="txtErr" role="alert" hidden></p>' +
-      '<button type="button" class="btn btn-sm btn-ghost narrow-btn" id="narrowBtn" hidden>Пробвай с по-тесния шрифт</button></div>';
+    var body = '<div class="field"><label for="txt">Вашият надпис <span class="muted">(по желание, на един или два реда)</span></label>' +
+      '<textarea id="txt" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="напр. СЕМЕЙСТВО ИВАНОВИ">' + esc(state.text) + '</textarea>' +
+      '<p class="txt-status" id="txtStatus" role="status" aria-live="polite"></p>' +
+      '<div class="txt-actions"><button type="button" class="btn btn-sm btn-ghost" id="splitBtn" hidden>Раздели на два реда</button>' +
+      '<button type="button" class="btn btn-sm btn-ghost" id="narrowBtn" hidden>Пробвай с по-тесния шрифт</button></div></div>';
     if (mo.font) {
       body += '<p class="sub">Шрифт</p><div class="opts opts-3 fonts">' + mo.font.map(function (x) {
         return '<label class="opt opt-font"><input type="radio" name="font" value="' + esc(x.opt.code) + '"' + (state.opts.font === x.opt.code ? ' checked' : '') +
@@ -209,7 +201,7 @@
         return optCard('sides', x.opt.code, state.opts.sides === x.opt.code, label, '', 'opt-compact');
       }).join('') + '</div><p class="step-hint">' + esc(groupsByCode.sides.hint || '') + '</p>';
     }
-    html += stepHtml('st-text', 'Надпис', body, 'До ' + m.max_chars + ' знака. Надписът се побира автоматично; минимална височина на буквите ' + num(SET.min_letter_mm) + ' мм.');
+    html += stepHtml('st-text', 'Надпис', body, 'Надписът се побира автоматично. Нов ред – с Enter.');
     // 6. Орнамент
     if (mo.ornament) {
       html += stepHtml('st-ornament', groupsByCode.ornament.name, '<div class="opts opts-orn">' + mo.ornament.map(function (x) {
@@ -257,7 +249,9 @@
       var dims = m.shape === 'hex' ? 'Ø' + num(m.w) + ' × ' + num(m.h) + ' см' : num(m.w) + ' × ' + num(m.d) + ' × ' + num(m.h) + ' см';
       if (r.legCm) dims += ' <span class="muted">(+' + num(r.legCm) + ' см крачета)</span>';
       var spec = '<span>' + dims + '</span><span>≈ ' + num(r.weight.kg) + ' кг</span>';
-      if (r.decoratedCount > 1) spec += '<span>' + r.decoratedCount + ' декорирани страни</span>';
+      if (r.decoratedCount > 1) {
+        spec += '<span>' + r.decoratedCount + ' декорирани страни' + (r.text && r.fit ? ' · надписът се повтаря на страничните' : '') + '</span>';
+      }
       specsEl.innerHTML = spec;
       var priceTxt = r.price ? (r.price.min === r.price.max ? money(r.price.min) : money(r.price.min) + ' – ' + money(r.price.max)) + ' ' + SET.currency : '';
       $$('[data-price]').forEach(function (el) {
@@ -276,29 +270,27 @@
   function updateTextUi(r) {
     var input = $('#txt');
     if (!input) return;
-    var len = G.textLength(r.text), max = r.m.max_chars, cap = r.cap, cnt = $('#txtCount'), txt;
-    if (r.errorType === 'max') {
-      txt = 'С ' + (len - max) + ' знака над лимита от ' + max;
-    } else if (r.errorType === 'small') {
-      txt = 'Твърде дълъг за този шрифт';
-    } else if (cap && cap.remaining >= 0) {
-      if (cap.limitedBy === 'model') txt = 'Остават ' + cap.remaining + ' от ' + max + ' знака';
-      else txt = (len ? 'Остават' : 'Побират се') + ' около ' + cap.remaining + ' ' + (cap.remaining === 1 ? 'знак' : 'знака') + ' с този шрифт';
+    // един ред със състоянието: зелено, когато е наред; червено с причината и какво да се направи
+    var st = $('#txtStatus');
+    if (r.error) {
+      st.textContent = r.error;
+      st.className = 'txt-status bad';
+    } else if (r.fit) {
+      st.textContent = 'Височина на буквите ≈ ' + Math.round(r.fit.letter_mm) + ' мм' + (r.fit.lines.length > 1 ? ' (на два реда)' : '');
+      st.className = 'txt-status ok';
     } else {
-      txt = len ? 'Не остават свободни знаци с този шрифт' : '';
+      st.textContent = 'Минимална височина на буквите за този материал: ' + num(r.minMm) + ' мм.';
+      st.className = 'txt-status';
     }
-    cnt.textContent = txt;
-    cnt.className = r.errorType ? 'over' : '';
+    var sb = $('#splitBtn');
+    sb.hidden = !r.split;
+    if (r.split) sb.setAttribute('data-split', JSON.stringify(r.split));
     var nb = $('#narrowBtn');
     nb.hidden = !r.betterFont;
     if (r.betterFont) {
       nb.setAttribute('data-font', r.betterFont.code);
       nb.textContent = 'Пробвай с по-тесния шрифт (' + r.betterFont.name + ', ≈ ' + Math.round(r.betterFont.mm) + ' мм)';
     }
-    $('#txtLetter').textContent = r.fit ? 'Височина на буквите ≈ ' + Math.round(r.fit.letter_mm) + ' мм' : '';
-    var err = $('#txtErr');
-    err.hidden = !r.error;
-    err.textContent = r.error;
     input.classList.toggle('invalid', !!r.error);
     input.setAttribute('aria-invalid', r.error ? 'true' : 'false');
     var sendBtn = $('#sendBtn');
@@ -307,7 +299,7 @@
     if (formErr) formErr.hidden = !r.error;
     // образците на шрифтовете показват надписа на клиента
     $$('.font-sample').forEach(function (s) {
-      var t = r.text ? G.chars(r.text).slice(0, 8).join('') : 'Огън';
+      var t = r.text ? G.chars(r.lines[0]).slice(0, 8).join('') : 'Огън';
       if (s.textContent !== t) s.textContent = t;
     });
   }
@@ -334,6 +326,17 @@
   });
 
   stepsEl.addEventListener('click', function (e) {
+    var sp = e.target.closest('#splitBtn');
+    if (sp && !sp.hidden) {
+      // разделяне при интервала, най-близък до средата
+      var parts = JSON.parse(sp.getAttribute('data-split') || 'null');
+      if (parts) {
+        state.text = parts.join('\n');
+        $('#txt').value = state.text;
+        update();
+      }
+      return;
+    }
     var b = e.target.closest('#narrowBtn');
     if (!b || b.hidden) return;
     var code = b.getAttribute('data-font'), radio = stepsEl.querySelector('input[name="font"][value="' + code + '"]');
@@ -343,7 +346,15 @@
   var textTimer = 0;
   stepsEl.addEventListener('input', function (e) {
     if (e.target.id !== 'txt') return;
-    state.text = e.target.value;
+    // най-много два реда: трети ред се слива с втория
+    var v = e.target.value, parts = v.split('\n');
+    if (parts.length > 2) {
+      v = parts[0] + '\n' + parts.slice(1).join(' ');
+      var pos = e.target.selectionStart;
+      e.target.value = v;
+      e.target.setSelectionRange(Math.min(pos, v.length), Math.min(pos, v.length));
+    }
+    state.text = v;
     update();
     clearTimeout(textTimer);
     if (!tracked.text && G.normalizeText(state.text)) {
@@ -552,7 +563,7 @@
         if (k.indexOf('contact.') === 0) fieldError(k.slice(8), errsS[k]);
       });
       if (errsS.text) {
-        var te = $('#txtErr'); te.textContent = errsS.text; te.hidden = false;
+        var te = $('#txtStatus'); te.textContent = errsS.text; te.className = 'txt-status bad';
       }
       msg.textContent = (data && data.message) || 'Запитването не беше изпратено. Проверете полетата и опитайте отново.';
       msg.hidden = false;

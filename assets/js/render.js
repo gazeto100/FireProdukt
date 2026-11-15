@@ -20,6 +20,7 @@
       rim: '#fbfcfd',
       edge: 'rgba(40,46,52,.35)',
       leg: ['#9aa0a7', '#767c83'],
+      caption: 'rgba(35,40,46,.72)',
       brush: true
     },
     black: {
@@ -32,6 +33,7 @@
       rim: '#6a6a70',
       edge: 'rgba(0,0,0,.6)',
       leg: ['#2f2f32', '#1c1c1e'],
+      caption: 'rgba(255,255,255,.62)',
       brush: false
     },
     corten: {
@@ -44,6 +46,7 @@
       rim: '#c98352',
       edge: 'rgba(50,20,5,.5)',
       leg: ['#7c3e1d', '#5a2c14'],
+      caption: 'rgba(255,236,220,.75)',
       brush: false
     }
   };
@@ -130,31 +133,59 @@
   };
 
   /* ---------- Декорация на една стена (в локални координати u, v надолу) ---------- */
-  function wallDecor(W, H, o) {
-    var L = o.layout, holes = '', bridges = '';
-    var margin = Math.max(L.margin_min_mm, L.margin_ratio * W);
+  /* ---------- Мостчета: къси вертикални, само в буквите със затворен контур ----------
+   * [позиция по ширината на буквата (0–1), вид]; вид: top – през горната черта, bot – през долната,
+   * bar – през напречната черта (А, 4). Височините са части от главна буква (или от x-височина при малките).
+   */
+  var BRIDGE_Y = { top: [0.80, 1.06], bot: [-0.06, 0.20], bar: [0.20, 0.48] };
+  var TB = [[0.5, 'top'], [0.5, 'bot']];
+  var BRIDGES = {
+    'О': TB, 'O': TB, 'Q': TB, '0': TB, 'D': [[0.45, 'top'], [0.45, 'bot']], 'Ю': [[0.68, 'top'], [0.68, 'bot']],
+    'А': [[0.5, 'bar']], 'A': [[0.5, 'bar']], '4': [[0.55, 'bar']],
+    'Р': [[0.45, 'top']], 'P': [[0.45, 'top']], 'R': [[0.42, 'top']], 'Я': [[0.55, 'top']], '9': [[0.5, 'top']],
+    'Б': [[0.55, 'bot']], 'Ъ': [[0.64, 'bot']], 'Ь': [[0.56, 'bot']], '6': [[0.5, 'bot']], 'Д': [[0.5, 'bot']],
+    'В': [[0.45, 'top'], [0.45, 'bot']], 'B': [[0.45, 'top'], [0.45, 'bot']], '8': TB,
+    'Ф': [[0.24, 'top'], [0.76, 'top']],
+    'о': TB, 'o': TB, 'а': [[0.42, 'bot']], 'a': [[0.42, 'bot']], 'е': [[0.5, 'top']], 'e': [[0.5, 'top']],
+    'р': [[0.58, 'top']], 'p': [[0.58, 'top']], 'q': [[0.42, 'top']], 'я': [[0.5, 'top']],
+    'б': [[0.55, 'bot']], 'b': [[0.58, 'bot']], 'd': [[0.42, 'bot']], 'ъ': [[0.62, 'bot']], 'ь': [[0.56, 'bot']], 'д': [[0.5, 'bot']],
+    'в': [[0.45, 'top'], [0.45, 'bot']], 'ю': [[0.68, 'top'], [0.68, 'bot']], 'ф': [[0.24, 'top'], [0.76, 'top']]
+  };
+
+  function wallDecor(W, H, o, showText) {
+    var L = o.layout, holes = '', bridges = '', edge = L.edge_mm || 25;
     if (o.pattern && PATTERNS[o.pattern]) {
-      var ob = L.band_orn;
-      holes += '<path d="' + PATTERNS[o.pattern](margin, ob[0] * H, W - 2 * margin, (ob[1] - ob[0]) * H) + '"/>';
+      var ob = L.band_orn, oTop = Math.max(ob[0] * H, edge), oBot = Math.min(ob[1] * H, H - edge);
+      if (oBot > oTop + 10) holes += '<path d="' + PATTERNS[o.pattern](edge, oTop, W - 2 * edge, oBot - oTop) + '"/>';
     }
     var fit = o.fit;
-    if (o.text && fit) {
-      var band = fit.band, mid = (band[0] + band[1]) / 2 * H;
-      var base = mid + (fit.y_max + fit.y_min) / 2;
-      var x = (W - fit.width_mm) / 2;
-      holes += '<text x="' + f(x) + '" y="' + f(base) + '" font-family="' + o.fontFamily + '" font-size="' + f(fit.size_mm) +
-        '" textLength="' + f(fit.width_mm) + '" lengthAdjust="spacingAndGlyphs" style="font-kerning:none;font-variant-ligatures:none">' + esc(o.text) + '</text>';
-      var t = Math.max(L.bridge_min_mm, L.bridge_ratio * fit.cap_mm);
-      L.bridges.forEach(function (p) {
-        var y = base - p * fit.cap_mm - t / 2;
-        bridges += '<rect x="' + f(x - 4) + '" y="' + f(y) + '" width="' + f(fit.width_mm + 8) + '" height="' + f(t) + '"/>';
+    if (showText && o.text && fit && fit.lines) {
+      var n = fit.lines.length, total = n * fit.line_h + (n - 1) * fit.gap;
+      var top0 = (fit.band[0] + fit.band[1]) / 2 - total / 2;
+      var font = o.fonts && o.fonts.fonts[o.fontKey || 'russo'], k = font ? fit.size_mm / font.upm : 0, bw = L.bridge_mm || 3;
+      fit.lines.forEach(function (line, i) {
+        var base = top0 + fit.y_max + i * (fit.line_h + fit.gap), wi = fit.widths_mm[i], x = (W - wi) / 2;
+        holes += '<text x="' + f(x) + '" y="' + f(base) + '" font-family="' + o.fontFamily + '" font-size="' + f(fit.size_mm) +
+          '" textLength="' + f(wi) + '" lengthAdjust="spacingAndGlyphs" style="font-kerning:none;font-variant-ligatures:none">' + esc(line) + '</text>';
+        if (!font) return;
+        Array.from(line).forEach(function (ch) {
+          var g = font.g[ch], adv = g ? g[0] * k : 0, spec = BRIDGES[ch];
+          if (spec) {
+            var ref = ch.toUpperCase() !== ch ? fit.xh_mm : fit.cap_mm;
+            spec.forEach(function (b) {
+              var yr = BRIDGE_Y[b[1]];
+              bridges += '<rect x="' + f(x + b[0] * adv - bw / 2) + '" y="' + f(base - yr[1] * ref) + '" width="' + f(bw) + '" height="' + f((yr[1] - yr[0]) * ref) + '"/>';
+            });
+          }
+          x += adv;
+        });
       });
     }
     return { holes: holes, bridges: bridges };
   }
 
-  function wallMarkup(id, W, H, transform, fill, o, decorate, pal) {
-    var dec = decorate ? wallDecor(W, H, o) : { holes: '', bridges: '' };
+  function wallMarkup(id, W, H, transform, fill, o, decorate, pal, showText) {
+    var dec = decorate ? wallDecor(W, H, o, showText !== false) : { holes: '', bridges: '' };
     var s = '<g transform="' + transform + '">';
     var masked = '';
     if (dec.holes) {
@@ -357,7 +388,17 @@
       if (!w.visible) return;
       var tr = 'matrix(' + ((sx(w.b[0], w.b[1]) - sx(w.a[0], w.a[1])) / w.len).toFixed(4) + ',' + (-w.dz * KY / w.len).toFixed(4) + ',0,1,' +
         f(sx(w.a[0], w.a[1])) + ',' + f(-top - w.a[1] * KY) + ')';
-      s += wallMarkup(id + 'm' + w.i, w.len, H, tr, faceFill(id, w.dz), o, decorate && w.i < nDec, pal);
+      // На скосените стени надписът не се изрязва в изгледа (би бил нечетлив) – вместо него кратка бележка
+      var skewed = Math.abs(w.dz) > 1e-6, dec = decorate && w.i < nDec;
+      s += wallMarkup(id + 'm' + w.i, w.len, H, tr, faceFill(id, w.dz), o, dec, pal, !skewed);
+      if (skewed && dec && o.text && o.fit && o.fit.band) {
+        var a = (sx(w.b[0], w.b[1]) - sx(w.a[0], w.a[1])) / w.len, bb = -w.dz * KY / w.len, u = w.len / 2;
+        var cxp = sx(w.a[0], w.a[1]) + a * u, cyp = -top - w.a[1] * KY + bb * u + (o.fit.band[0] + o.fit.band[1]) / 2;
+        // размер по видимата (проектираната) ширина на стената: най-дългият ред е ~8 em
+        var fs = Math.min(Math.abs(a) * w.len * 0.8 / 8.2, 30);
+        s += '<text class="fp-caption" x="' + f(cxp) + '" y="' + f(cyp) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-size="' + f(fs) + '" fill="' + (pal.caption || 'rgba(40,46,52,.7)') + '">' +
+          '<tspan x="' + f(cxp) + '" dy="-0.9em">надписът</tspan><tspan x="' + f(cxp) + '" dy="1.2em">се повтаря</tspan><tspan x="' + f(cxp) + '" dy="1.2em">на тази страна</tspan></text>';
+      }
     });
 
     // ръбове: задните (тънки), предните (по-плътни) и вертикалните ъгли между видими стени
@@ -554,7 +595,7 @@
   function renderShowcase(item, o) {
     o = o || {};
     var id = o.id || ('sc' + item.code), r;
-    var base = { id: id, finish: item.finish, layout: o.layout, fontFamily: "'fp-" + (o.fontKey || 'russo') + "'" };
+    var base = { id: id, finish: item.finish, layout: o.layout, fonts: o.fonts, fontKey: o.fontKey || 'russo', fontFamily: "'fp-" + (o.fontKey || 'russo') + "'" };
     if (item.kind === 'bowl') r = renderBowl({ id: id, finish: item.finish, d: item.d });
     else if (item.kind === 'ring') r = renderRingBench({ id: id, finish: item.finish, d: item.d });
     else {

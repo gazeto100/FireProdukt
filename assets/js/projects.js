@@ -18,6 +18,8 @@
         o.text = 'ЛОГО';
         o.fit = G.textFit('ЛОГО', 'russo', walls, true, CFG.fonts, L);
         o.pattern = 'pines';
+        o.fonts = CFG.fonts;
+        o.fontKey = 'russo';
       }
       card.querySelector('.g-img').innerHTML = R.renderShowcase(it, o);
     });

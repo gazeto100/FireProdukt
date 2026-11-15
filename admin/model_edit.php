@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'width_cm' => post_num('width_cm'),
         'depth_cm' => post_num('depth_cm'),
         'height_cm' => post_num('height_cm'),
-        'max_chars' => (int)($_POST['max_chars'] ?? 0),
+        'max_chars' => TEXT_MAX_CHARS, // вече не е ограничение за клиента – само технически таван
         'price_min' => post_num('price_min'),
         'price_max' => post_num('price_max'),
         'sheet_area_m2' => post_num('sheet_area_m2'),
@@ -56,7 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach (['width_cm' => 'Ширина/диаметър', 'depth_cm' => 'Дълбочина', 'height_cm' => 'Височина'] as $k => $label) {
         if ($v[$k] === null || $v[$k] < 5 || $v[$k] > 300) $errors[] = "$label трябва да е между 5 и 300 см.";
     }
-    if ($v['max_chars'] < 1 || $v['max_chars'] > 60) $errors[] = 'Максималният брой знаци трябва да е между 1 и 60.';
     if ($v['price_min'] === null || $v['price_max'] === null || $v['price_min'] < 0 || $v['price_max'] < $v['price_min']) $errors[] = 'Цена: „от“ ≥ 0 и „до“ ≥ „от“.';
     if ($v['sheet_area_m2'] !== null && ($v['sheet_area_m2'] <= 0 || $v['sheet_area_m2'] > 20)) $errors[] = 'Площта на ламарината трябва да е между 0 и 20 м² (или празно).';
 
@@ -85,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $cap = [];
 if ($model && !$errors) {
     $m = ['shape' => $model['shape'], 'w' => (float)$model['width_cm'], 'd' => (float)$model['depth_cm'], 'h' => (float)$model['height_cm'], 'sheet_area_m2' => $model['sheet_area_m2'] !== null ? (float)$model['sheet_area_m2'] : null];
-    $minMm = (float)setting('min_letter_mm', '30');
+    $minMm = min_letter_for_thickness(2);
     foreach (font_metrics()['fonts'] as $k => $f) {
         $cap[$f['label']] = [text_capacity_estimate(decorated_walls($m, 1), $k, $minMm), text_capacity_estimate(decorated_walls($m, 'all'), $k, $minMm)];
     }
@@ -119,7 +118,6 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
   </div>
   <p class="muted small" id="hexNote" hidden>При шестоъгълника ширината е диаметърът през ъглите; всяка от 6-те стени е широка половината от него.</p>
   <div class="two">
-    <label>Максимум знаци за надпис<input name="max_chars" type="number" min="1" max="60" value="<?= (int)$v['max_chars'] ?>"></label>
     <label>Ред в списъка<input name="sort" type="number" value="<?= (int)$v['sort'] ?>"></label>
   </div>
   <div class="two">
@@ -142,12 +140,11 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
 <div>
   <section class="card">
     <h2>Колко знака се побират</h2>
-    <p class="muted small">Ориентир при минимална височина на буквата <?= e(fmt_num(setting('min_letter_mm', '30'))) ?> мм, главни букви. Броячът в конфигуратора се изчислява точно за реалния текст.</p>
+    <p class="muted small">Ориентир на един ред, главни букви, при минималната буква за 2 мм (<?= e(fmt_num(min_letter_for_thickness(2))) ?> мм). Ограничение е само височината; на два реда се побират около двойно повече.</p>
     <table class="kv">
       <tr><th>Шрифт</th><td><b>1 страна</b></td><td><b>Всички страни</b></td></tr>
       <?php foreach ($cap as $label => $c): ?><tr><th><?= e($label) ?></th><td>≈ <?= (int)$c[0] ?></td><td>≈ <?= (int)$c[1] ?></td></tr><?php endforeach; ?>
     </table>
-    <p class="small">Текущ лимит: <b><?= (int)$model['max_chars'] ?></b> знака.</p>
   </section>
   <section class="card">
     <h2>Опции на модела</h2>

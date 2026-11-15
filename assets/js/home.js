@@ -3,7 +3,7 @@
   'use strict';
   var CAT = window.FP_CATALOG, G = window.FPGeo, R = window.FPRender;
   if (!CAT || !CAT.models.length || !R) return;
-  var L = CAT.layout, FONTS = CAT.fonts, MIN = CAT.settings.min_letter_mm;
+  var L = CAT.layout, FONTS = CAT.fonts, MIN = CAT.settings.min_letter_2mm;
 
   // Примерни надписи и орнаменти за галерията (само за показ)
   var SAMPLES = ['ИВАНОВИ', 'ВИЛА', 'ОГЪН', 'ПЕТРОВИ', 'СКАРА'];
@@ -15,13 +15,12 @@
     var sides = opts.sides || 2, walls = G.decoratedWalls(m, sides), text = '', fit = null;
     var list = opts.text ? [opts.text] : SAMPLES.slice(i).concat(SAMPLES.slice(0, i));
     for (var k = 0; k < list.length; k++) {
-      if (G.textLength(list[k]) > m.max_chars) continue;
       var f = G.textFit(list[k], 'russo', walls, !!pattern, FONTS, L);
       if (f && f.letter_mm >= MIN) { text = list[k]; fit = f; break; }
     }
     return R.render({
       model: m, finish: opts.finish || (i % 3 === 1 ? 'black' : 'inox'), legCm: m.shape === 'grill' ? 10 : 0,
-      text: text, fit: fit, fontKey: 'russo', pattern: pattern, decoratedCount: walls.length,
+      text: text, fit: fit, fontKey: 'russo', fonts: FONTS, pattern: pattern, decoratedCount: walls.length,
       extras: m.shape === 'grill' ? { grate: true } : {}, layout: L, id: (opts.id || 'g') + i, title: m.name
     });
   }

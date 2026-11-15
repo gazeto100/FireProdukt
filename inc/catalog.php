@@ -96,7 +96,8 @@ function load_catalog(bool $activeOnly = true): array
         'options' => $options,
         'models' => $models,
         'settings' => [
-            'min_letter_mm' => (float)setting('min_letter_mm', '30'),
+            'min_letter_2mm' => (float)setting('min_letter_2mm', '30'),
+            'min_letter_3mm' => (float)setting('min_letter_3mm', '35'),
             'show_prices' => setting('show_prices', '0') === '1',
             'currency' => setting('currency', '€'),
         ],
