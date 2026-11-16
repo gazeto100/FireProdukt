@@ -465,12 +465,17 @@
     s += line(d, [d[0], d[1] - 46], 'stroke="#7a4b26" stroke-width="14" stroke-linecap="round"');
     return s;
   }
-  /** Отворен капак на панти: вертикално зад отвора; вътрешната му страна (W × D) гледа към нас */
-  function openLidMarkup(o, id, pal, minX, maxX, maxZ, top, D, lidT, decorate) {
+  /** Отворен капак на панти: вертикално зад отвора; вътрешната му страна (W × D) гледа към нас.
+   *  Надписът се чете отвън при затворен капак, затова отвътре се вижда огледално:
+   *  flip 'v' – обърнат отгоре надолу (барбекю: панти отзад, чете се отпред при затворен капак);
+   *  flip 'h' – огледален ляво-дясно (куфар: чете се, когато е сгънат и носен за дръжката). */
+  function openLidMarkup(o, id, pal, minX, maxX, maxZ, top, D, lidT, decorate, flip) {
     var s = '', W = maxX - minX, y1 = top + D;
     s += poly([P(maxX, top, maxZ), P(maxX, top, maxZ + lidT), P(maxX, y1, maxZ + lidT), P(maxX, y1, maxZ)], 'fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"');
     s += poly([P(minX, y1, maxZ), P(maxX, y1, maxZ), P(maxX, y1, maxZ + lidT), P(minX, y1, maxZ + lidT)], 'fill="url(#' + id + 'top)"');
-    var tr = 'matrix(1,0,0,1,' + f(sx(minX, maxZ)) + ',' + f(-y1 - maxZ * KY) + ')';
+    var x0 = sx(minX, maxZ), y0 = -y1 - maxZ * KY;
+    var tr = flip === 'v' ? 'matrix(1,0,0,-1,' + f(x0) + ',' + f(y0 + D) + ')' :
+      flip === 'h' ? 'matrix(-1,0,0,1,' + f(x0 + W) + ',' + f(y0) + ')' : 'matrix(1,0,0,1,' + f(x0) + ',' + f(y0) + ')';
     s += wallMarkup(id + 'lid', W, D, tr, 'url(#' + id + 'front)', o, decorate, pal, true);
     [minX + W * 0.18, maxX - W * 0.18].forEach(function (x) { s += poly([P(x - 22, top + 14, maxZ), P(x + 22, top + 14, maxZ), P(x + 22, top - 10, maxZ), P(x - 22, top - 10, maxZ)], 'fill="#3b3f44"'); });
     s += line(P(minX, y1, maxZ), P(maxX, y1, maxZ), 'stroke="' + pal.rim + '" stroke-width="4"');
@@ -562,10 +567,14 @@
     var topPoly = outline.map(function (p) { return P(p[0], top, p[1]); });
 
     var toolsH = ex.tools ? Math.max(380, top + 140) + 60 - top : 0;
-    var up = Math.max(fireH, ex.arm ? armH + 20 : 0, closedLid ? 60 : 0, wgH + 20, lidOpen ? spanZ + 90 : 0, chevLevels ? 760 : 0, ex.grate2 ? 210 : 0, nSkew ? 40 : 0, toolsH);
+    // бележка над отворения капак, когато надписът е на него (отвътре се вижда огледално)
+    var lidNote = lidOpen && textOnLid && !!(o.text && o.fit), noteFs = Math.max(44, Math.min((top + spanZ) * 0.06, spanX * 0.12));
+    var up = Math.max(fireH, ex.arm ? armH + 20 : 0, closedLid ? 60 : 0, wgH + 20, lidOpen ? spanZ + 90 + (lidNote ? noteFs * 2.8 : 0) : 0, chevLevels ? 760 : 0, ex.grate2 ? 210 : 0, nSkew ? 40 : 0, toolsH);
     var sxs = outline.map(function (p) { return sx(p[0], p[1]); });
     var bagW = ex.bag ? spanX * 1.05 : 0, bagH = Math.max(H * 1.6 + 40, spanX * 0.45);
-    var foldW = shape === 'suitcase' ? Math.min(spanX * 0.42, 300) : 0, brick = shape === 'insert' ? 175 : 0;
+    // малък втори изглед: куфар – „сгънат“; барбекю с надпис на капака – „затворено“
+    var closedView = shape === 'bbq' && textOnLid && lidOpen;
+    var foldW = shape === 'suitcase' ? Math.min(spanX * 0.42, 300) : closedView ? Math.min(spanX * 0.75, 520) : 0, brick = shape === 'insert' ? 175 : 0;
     var toolsL = ex.tools && tableW ? 170 : 0, toolsR = ex.tools && !tableW ? 170 : 0;
     var postL = chevLevels ? 100 : 0, postR = chevLevels ? 160 + (ex.motor ? 170 : 0) : 0;
     var vx = minOf(sxs) - 50 - (bagW ? bagW + 40 : 0) - tableL - (foldW ? foldW + 70 : 0) - toolsL - postL - brick, vy = -(top + up) - maxZ * KY - 20;
@@ -598,7 +607,7 @@
     // стойка за чеверме – лявата стойка е зад коритото
     if (chevLevels) s += chevermeStand(id, minX - 60, cz, chevLevels, pal);
     // отворен капак (барбекю, куфар) – зад отвора, преди вътрешността
-    if (lidOpen) s += openLidMarkup(o, id, pal, minX, maxX, maxZ, top, spanZ, lidT, decorate && textOnLid);
+    if (lidOpen) s += openLidMarkup(o, id, pal, minX, maxX, maxZ, top, spanZ, lidT, decorate && textOnLid, shape === 'bbq' ? 'v' : 'h');
     // крачета (рафтът за дърва е между задните и предните)
     var spots = legSpots(m, outline, cx, cz);
     if (shape === 'suitcase') s += foldLegsMarkup(minX, maxX, minZ, maxZ, Lg, pal);
@@ -747,6 +756,11 @@
     // барбекю: дръжка и термометър на отворения капак; куфар: дръжка за носене
     if (lidOpen) {
       s += lidHandleMarkup(cx, top + spanZ, maxZ + lidT, Math.min(220, spanX * 0.4));
+      if (lidNote) {
+        var nt = P(cx, top + spanZ, maxZ);
+        s += '<text class="fp-caption" x="' + f(nt[0]) + '" y="' + f(nt[1] - 34 - noteFs * 2) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-size="' + f(noteFs) + '" fill="#b9b2a8">' +
+          '<tspan x="' + f(nt[0]) + '">чете се отвън</tspan><tspan x="' + f(nt[0]) + '" dy="1.15em">при затворен капак</tspan></text>';
+      }
       if (ex.thermometer) {
         var tcO = P(cx + spanX * 0.36, top + spanZ * 0.86, maxZ);
         s += '<circle cx="' + f(tcO[0]) + '" cy="' + f(tcO[1]) + '" r="24" fill="#f4f1ec" stroke="#3b3f44" stroke-width="5"/>' +
@@ -756,7 +770,7 @@
     // ръжен и лопатка – отстрани (вляво, ако вдясно има плот)
     if (ex.tools) s += tableW ? toolsMarkup(minX - tableL, -1, minZ + 30, top) : toolsMarkup(maxX + (brick ? 170 : chevLevels ? 120 : 0), 1, minZ + 30, top);
     // мангал куфар: малък втори изглед „сгънат“ (затворен, изправен, с дръжка; надписът е на капака)
-    if (foldW) {
+    if (foldW && shape === 'suitcase') {
       var scF = foldW / spanX, fh2 = spanZ * scF, tF = (H + lidT) * scF;
       var fxF = minOf(sxs) - 60 - foldW, fyF = -(top + spanZ * 0.75) - maxZ * KY;
       s += '<polygon points="' + pts([[fxF + foldW, fyF], [fxF + foldW + tF * KX, fyF - tF * KY], [fxF + foldW + tF * KX, fyF - tF * KY + fh2], [fxF + foldW, fyF + fh2]]) + '" fill="url(#' + id + 'side)"/>';
@@ -765,6 +779,16 @@
       var hcx = fxF + foldW / 2 + tF * KX / 2, hcy = fyF - tF * KY / 2;
       s += '<path d="M' + f(hcx - foldW * 0.16) + ',' + f(hcy) + 'v' + f(-foldW * 0.08) + 'h' + f(foldW * 0.32) + 'v' + f(foldW * 0.08) + '" fill="none" stroke="#2b2c2f" stroke-width="' + f(Math.max(5, foldW * 0.035)) + '" stroke-linejoin="round"/>';
       s += '<text class="fp-caption" x="' + f(fxF + foldW / 2) + '" y="' + f(fyF + fh2 + foldW * 0.16) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-size="' + f(Math.max(34, foldW * 0.2)) + '" fill="#b9b2a8">сгънат</text>';
+    }
+    // барбекю: малък изглед „затворено“ отгоре – капакът с четлив надпис, отпред лицето на капака и тялото
+    if (foldW && closedView) {
+      var scC = foldW / spanX, lh = spanZ * scC, fl = lidT * scC * 0.4, fb = H * scC * 0.4;
+      var cxC = minOf(sxs) - 60 - foldW, cyC = -(top + spanZ * 0.75) - maxZ * KY;
+      s += wallMarkup(id + 'closed', spanX, spanZ, 'matrix(' + scC.toFixed(4) + ',0,0,' + scC.toFixed(4) + ',' + f(cxC) + ',' + f(cyC) + ')', 'url(#' + id + 'top)', o, decorate, pal, true);
+      s += '<rect x="' + f(cxC) + '" y="' + f(cyC + lh) + '" width="' + f(foldW) + '" height="' + f(fl) + '" fill="url(#' + id + 'front)" stroke="' + pal.edge + '" stroke-width="2"/>';
+      s += '<rect x="' + f(cxC + foldW * 0.02) + '" y="' + f(cyC + lh + fl) + '" width="' + f(foldW * 0.96) + '" height="' + f(fb) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
+      s += line([cxC + foldW * 0.32, cyC + lh + fl * 0.5], [cxC + foldW * 0.68, cyC + lh + fl * 0.5], 'stroke="#2b2c2f" stroke-width="' + f(Math.max(5, foldW * 0.035)) + '" stroke-linecap="round"');
+      s += '<text class="fp-caption" x="' + f(cxC + foldW / 2) + '" y="' + f(cyC + lh + fl + fb + foldW * 0.16) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-size="' + f(Math.max(34, foldW * 0.2)) + '" fill="#b9b2a8">затворено</text>';
     }
 
     // огнище маса на дърва: кръгла огнена купа, вградена в плота, с мрежест искрогасител отгоре
