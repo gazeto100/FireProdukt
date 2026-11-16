@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'sort' => (int)($_POST['sort'] ?? 0),
         'active' => isset($_POST['active']) ? 1 : 0,
     ];
-    if (in_array($v['shape'], ['hex', 'octagon', 'cross', 'ringbowl'], true)) {
+    if (shape_is_round((string)$v['shape'])) {
         $v['depth_cm'] = $v['width_cm']; // при кръглите форми дълбочината = диаметъра
     }
     if ($v['form_id'] && !in_array($v['form_id'], array_map('intval', array_column($formsList, 'id')), true)) $v['form_id'] = null;
@@ -173,7 +173,7 @@ admin_header($model ? 'Модел ' . $model['name'] : 'Нов модел', 'mod
 <script>
 (function () {
   var s = document.getElementById('shape'), d = document.getElementById('dWrap'), wl = document.getElementById('wLabel'), n = document.getElementById('hexNote');
-  function sync() { var hex = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(s.value) >= 0; d.hidden = hex; n.hidden = !hex; wl.textContent = hex ? 'Диаметър, см' : 'Ширина, см'; }
+  function sync() { var hex = <?= json_encode(ROUND_SHAPES) ?>.indexOf(s.value) >= 0; d.hidden = hex; n.hidden = !hex; wl.textContent = hex ? 'Диаметър, см' : 'Ширина, см'; }
   s.addEventListener('change', sync); sync();
 })();
 </script>

@@ -24,7 +24,7 @@ function validate_config(array $in, array $cat): array
         if (!$form || empty($form['custom'])) {
             $errors['size'] = 'За тази форма няма размер по избор.';
         } else {
-            $cc = custom_dims_check($form, $in['custom']);
+            $cc = custom_dims_check($form, $in['custom'], (string)$model['shape']);
             if ($cc['errors']) {
                 $errors['size'] = implode(' ', $cc['errors']);
             } else {
@@ -33,6 +33,10 @@ function validate_config(array $in, array $cat): array
                 $custom = true;
             }
         }
+    }
+
+    if (!$custom && $form && !empty($form['custom_only']) && !isset($errors['size'])) {
+        $errors['size'] = 'Тази форма се изработва само по мярка – задайте размерите.';
     }
 
     $compat = [];
@@ -59,6 +63,10 @@ function validate_config(array $in, array $cat): array
             $vals = $inOpts[$code] ?? [];
             if (!is_array($vals)) {
                 $vals = [];
+            }
+            // включените в модела екстри (по подразбиране в групата екстри) са винаги избрани
+            foreach ($avail as $c => $a) {
+                if ($a['mo']['default']) $vals[] = $c;
             }
             $chosen[$code] = [];
             foreach (array_unique(array_map('strval', $vals)) as $v) {
@@ -96,6 +104,8 @@ function validate_config(array $in, array $cat): array
     $fontKey = isset($chosen['font']['code']) ? (string)($byGroup['font'][$chosen['font']['code']]['opt']['render']['font'] ?? 'russo') : 'russo';
     $sidesVal = isset($chosen['sides']['code']) ? ($byGroup['sides'][$chosen['sides']['code']]['opt']['render']['sides'] ?? 1) : 1;
     $pattern = isset($chosen['ornament']['code']) ? ($byGroup['ornament'][$chosen['ornament']['code']]['opt']['render']['pattern'] ?? null) : null;
+    // място на надписа (барбекю: предна стена или капак)
+    $model['text_place'] = isset($chosen['text_place']['code']) ? (string)($byGroup['text_place'][$chosen['text_place']['code']]['opt']['render']['text_place'] ?? '') : '';
     $walls = decorated_walls($model, $sidesVal);
     $fit = null;
 
@@ -219,7 +229,7 @@ function config_lines(array $cfg, array $cat): array
     $m = $cfg['model'];
     $lines = [
         'Модел' => !empty($cfg['custom']) ? ($m['form_name'] ?? $m['name']) . ' – размер по избор (опции като „' . $m['name'] . '“)' : $m['name'],
-        'Размери' => (!empty($cfg['custom']) ? 'ПО ИЗБОР: ' : '') . (in_array($m['shape'] ?? '', ['hex', 'octagon', 'cross', 'ringbowl'], true)
+        'Размери' => (!empty($cfg['custom']) ? 'ПО ИЗБОР: ' : '') . (shape_is_round((string)($m['shape'] ?? ''))
             ? sprintf('Ø%s × %s см', fmt_num($m['w']), fmt_num($m['h']))
             : sprintf('%s × %s × %s см', fmt_num($m['w']), fmt_num($m['d']), fmt_num($m['h']))),
     ];

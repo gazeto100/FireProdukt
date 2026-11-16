@@ -44,7 +44,6 @@ page_header('', [
   // Една карта за форма (не за всеки размер), групирани по вид; нова форма от админа се появява автоматично
   $groupTitles = ['firepit' => 'Огнища', 'grill' => 'Мангали и скари'];
   $byCode = array_column($cat['models'], null, 'code');
-  $roundShapes = ['hex', 'octagon', 'cross', 'ringbowl'];
   ?>
   <section class="wrap gallery-sec" id="models">
     <h2 class="sec-title">Модели</h2>
@@ -54,8 +53,9 @@ page_header('', [
       <div class="gallery gallery-forms">
         <?php foreach ($forms as $fm):
             $ms = array_values(array_filter(array_map(fn($c) => $byCode[$c] ?? null, $fm['models'])));
-            $ws = array_column($ms, 'w'); $pre = in_array($fm['shape'], $roundShapes, true) ? 'Ø' : '';
+            $ws = array_column($ms, 'w'); $pre = shape_is_round($fm['shape']) ? 'Ø' : '';
             $range = min($ws) == max($ws) ? $pre . fmt_num(min($ws)) . ' см' : 'от ' . $pre . fmt_num(min($ws)) . ' до ' . $pre . fmt_num(max($ws)) . ' см';
+            if (!empty($fm['custom_only']) && $fm['custom']) $range = 'по мярка, ' . fmt_num($fm['custom']['w_min']) . '–' . fmt_num($fm['custom']['w_max']) . ' см';
             $rep = $ms[intdiv(count($ms) - 1, 2)]['code']; ?>
           <a class="g-card g-form" href="<?= e(url('configurator.php?form=' . rawurlencode($fm['code']))) ?>" data-model="<?= e($rep) ?>">
             <span class="g-img"></span>

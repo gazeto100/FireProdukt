@@ -11,7 +11,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require dirname(__DIR__) . '/inc/bootstrap.php';
 function size_txt(array $m): string
 {
-    return in_array($m['shape'], ['hex', 'octagon', 'cross', 'ringbowl'], true) ? 'Ø' . fmt_num($m['w']) . '×' . fmt_num($m['h']) : fmt_num($m['w']) . '×' . fmt_num($m['d']) . '×' . fmt_num($m['h']);
+    return shape_is_round($m['shape']) ? 'Ø' . fmt_num($m['w']) . '×' . fmt_num($m['h']) : fmt_num($m['w']) . '×' . fmt_num($m['d']) . '×' . fmt_num($m['h']);
 }
 
 $cat = load_catalog(true);

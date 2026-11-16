@@ -70,11 +70,22 @@
 
   /** Привежда избора в съответствие с модела: несъвместимите опции се заменят с подразбиращите се */
   function normalizeState() {
-    var m = model(), mo = modelOptions(m);
+    var m = model(), mo = modelOptions(m), fm = formOf(m);
+    // форма само по мярка: размерът по избор е задължителен
+    if (fm && fm.custom_only && fm.custom && !state.custom) state.custom = G.clampCustom(fm.custom, { w: m.w, d: m.d, h: m.h }, m.shape).dims;
     CAT.groups.forEach(function (g) {
       var list = mo[g.code] || [];
       if (g.multi) {
-        state.extras = state.extras.filter(function (c) { return list.some(function (x) { return x.opt.code === c; }); });
+        // включените в предишния модел екстри не се пренасят като избор на клиента
+        var prevInc = state.autoInc || [];
+        state.extras = state.extras.filter(function (c) { return prevInc.indexOf(c) < 0 && list.some(function (x) { return x.opt.code === c; }); });
+        // включените в модела екстри (напр. капакът на барбекюто) са винаги избрани
+        state.autoInc = [];
+        list.forEach(function (x) {
+          if (!x.mo.default) return;
+          state.autoInc.push(x.opt.code);
+          if (state.extras.indexOf(x.opt.code) < 0) state.extras.push(x.opt.code);
+        });
         return;
       }
       if (!list.length) { delete state.opts[g.code]; return; }
@@ -88,7 +99,7 @@
 
   /* ---------- изчисления ---------- */
   function compute() {
-    var m = effModel();
+    var m = Object.assign({}, effModel(), { text_place: renderParam('text_place', 'text_place', '') });
     var lines = G.textLines(state.text, L);
     var text = lines.join('\n');
     var fontKey = renderParam('font', 'font', 'russo');
@@ -138,11 +149,12 @@
     var ex = {};
     state.extras.forEach(function (c) {
       var list = modelOptions(r.m).extras || [];
-      list.forEach(function (x) { if (x.opt.code === c) ex[x.opt.render.extra || c] = true; });
+      list.forEach(function (x) { if (x.opt.code === c) ex[x.opt.render.extra || c] = x.opt.render.count || true; });
     });
     var o = {
       model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey, fonts: FONTS,
-      pattern: r.pattern, perfDensity: r.perfDensity, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name
+      pattern: r.pattern, perfDensity: r.perfDensity, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name,
+      textPlace: r.m.text_place, plateMm: parseFloat(renderParam('plate', 'plate_mm', 0)) || 0
     };
     for (var k in extra || {}) o[k] = extra[k];
     return o;
@@ -173,14 +185,15 @@
   function formOf(m) { return CAT.forms.filter(function (f) { return f.code === m.form; })[0]; }
   function formsOfType(t) { return CAT.forms.filter(function (f) { return f.type === t; }); }
   function sizeText(m) {
-    var round = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(m.shape) >= 0;
+    var round = G.isRound(m.shape);
     return round ? 'Ø' + num(m.w) + ' × ' + num(m.h) + ' см' : num(m.w) + ' × ' + num(m.d) + ' × ' + num(m.h) + ' см';
   }
   /** „от 40 до 60 см“ / „Ø60 см“ – по най-голямата страна */
   function formRange(f) {
     var ms = f.models.map(function (c) { return CAT.models.filter(function (m) { return m.code === c; })[0]; }).filter(Boolean);
     var ws = ms.map(function (m) { return m.w; }), mn = Math.min.apply(null, ws), mx = Math.max.apply(null, ws);
-    var pre = ['hex', 'octagon', 'cross', 'ringbowl'].indexOf(f.shape) >= 0 ? 'Ø' : '';
+    if (f.custom_only && f.custom) return 'по мярка, ' + num(f.custom.w_min) + '–' + num(f.custom.w_max) + ' см';
+    var pre = G.isRound(f.shape) ? 'Ø' : '';
     return mn === mx ? pre + num(mn) + ' см' : 'от ' + pre + num(mn) + ' до ' + pre + num(mx) + ' см';
   }
 
@@ -224,6 +237,8 @@
   }
   /** Полета за размер по избор: плъзгач + числово поле за всяко измерение според формата */
   function dimKeys(lim) {
+    var cur = model();
+    if (lim.mode !== 'wdh' && cur && !G.isRound(cur.shape)) return [['w', 'Ширина и дълбочина'], ['h', 'Височина']];
     if (lim.mode === 'dh') return [['w', 'Диаметър'], ['h', 'Височина']];
     if (lim.mode === 'wh') return [['w', 'Ширина и дълбочина'], ['h', 'Височина']];
     return [['w', 'Ширина'], ['d', 'Дълбочина'], ['h', 'Височина']];
@@ -274,11 +289,13 @@
     }).join('') + '</div>');
     var sizes = (curForm ? curForm.models : [m.code]).map(function (c) { return CAT.models.filter(function (x) { return x.code === c; })[0]; }).filter(Boolean);
     var lim = curForm && curForm.custom;
-    var sizeBody = '<div class="sizes">' + sizes.map(function (x) {
+    var sizeBody = curForm && curForm.custom_only ? '<p class="step-hint">Изработва се по мярка – задайте размерите на мястото за вграждане.</p>' : '<div class="sizes">' + sizes.map(function (x) {
       return '<label class="size-btn"><input type="radio" name="model" value="' + esc(x.code) + '"' + (!state.custom && state.model === x.code ? ' checked' : '') + '>' +
         '<span><b>' + esc(x.size_label || x.name) + '</b><small>' + esc(sizeText(x)) + '</small></span></label>';
     }).join('') + '</div>';
-    if (lim) {
+    if (lim && curForm.custom_only) {
+      sizeBody += customFields(lim);
+    } else if (lim) {
       sizeBody += '<button type="button" class="link-btn custom-toggle" id="customToggle" aria-expanded="' + (state.custom ? 'true' : 'false') + '">' +
         (state.custom ? 'Обратно към стандартните размери' : 'Размер по избор') + '</button>';
       if (state.custom) sizeBody += customFields(lim);
@@ -290,8 +307,14 @@
         return optCard('material', x.opt.code, state.opts.material === x.opt.code, x.opt.name, x.opt.hint, '', '<span class="sw sw-' + esc(x.opt.render.finish || 'inox') + '"></span>');
       }).join('') + '</div>');
     }
-    // 4. Крачета
-    if (mo.legs) {
+    // плоча за печене (огнище с плоча)
+    if (mo.plate) {
+      html += stepHtml('st-plate', groupsByCode.plate.name, '<div class="opts opts-3">' + mo.plate.map(function (x) {
+        return optCard('plate', x.opt.code, state.opts.plate === x.opt.code, x.opt.name, x.opt.hint, 'opt-compact');
+      }).join('') + '</div>', groupsByCode.plate.hint);
+    }
+    // 4. Крачета (само ако има избор – при барбекюто и скарата на стойка стойката е част от модела)
+    if (mo.legs && mo.legs.length > 1) {
       html += stepHtml('st-legs', groupsByCode.legs.name, '<div class="opts opts-3">' + mo.legs.map(function (x) {
         return optCard('legs', x.opt.code, state.opts.legs === x.opt.code, x.opt.name, x.opt.hint, 'opt-compact');
       }).join('') + '</div>');
@@ -308,7 +331,12 @@
           '><span class="opt-in"><span class="font-sample" style="font-family:\'fp-' + esc(x.opt.render.font) + '\'">Огън</span><small>' + esc(x.opt.name) + '</small></span></label>';
       }).join('') + '</div>';
     }
-    if (mo.sides) {
+    if (mo.text_place && mo.text_place.length > 1) {
+      body += '<p class="sub">' + esc(groupsByCode.text_place.name) + '</p><div class="opts opts-2">' + mo.text_place.map(function (x) {
+        return optCard('text_place', x.opt.code, state.opts.text_place === x.opt.code, x.opt.name, x.opt.hint, 'opt-compact');
+      }).join('') + '</div>';
+    }
+    if (mo.sides && mo.sides.length > 1) {
       body += '<p class="sub">' + esc(groupsByCode.sides.name) + '</p><div class="opts opts-3">' + mo.sides.map(function (x) {
         var label = x.opt.render.sides === 'all' ? x.opt.name + ' (' + G.modelWalls(m).length + ')' : x.opt.name;
         return optCard('sides', x.opt.code, state.opts.sides === x.opt.code, label, '', 'opt-compact');
@@ -316,7 +344,7 @@
     }
     html += stepHtml('st-text', 'Надпис', body, 'Надписът се побира автоматично. Нов ред – с Enter.');
     // 6. Орнамент
-    if (mo.ornament) {
+    if (mo.ornament && mo.ornament.length > 1) {
       html += stepHtml('st-ornament', groupsByCode.ornament.name, '<div class="opts opts-orn">' + mo.ornament.map(function (x) {
         return optCard('ornament', x.opt.code, state.opts.ornament === x.opt.code, x.opt.name, '', 'opt-orn', ornamentIcon(x.opt.render));
       }).join('') + '</div>');
@@ -328,9 +356,9 @@
         var list = mo.extras.filter(function (x) { return (x.opt.subgroup || '') === sg[0]; });
         if (!list.length) return;
         ebody += '<p class="sub">' + esc(sg[1]) + '</p><div class="opts">' + list.map(function (x) {
-          var miss = missingRequirement(x.opt), hint = miss ? 'Само с „' + miss.name + '“' : x.opt.hint;
-          return optCard('extras', x.opt.code, state.extras.indexOf(x.opt.code) >= 0, x.opt.name, hint, 'opt-check' + (miss ? ' opt-off' : ''), '<span class="tick"></span>', 'checkbox')
-            .replace('type="checkbox"', 'type="checkbox"' + (miss ? ' disabled' : ''));
+          var miss = missingRequirement(x.opt), incl = x.mo.default, hint = incl ? 'Включено в модела' : miss ? 'Само с „' + miss.name + '“' : x.opt.hint;
+          return optCard('extras', x.opt.code, incl || state.extras.indexOf(x.opt.code) >= 0, x.opt.name, hint, 'opt-check' + (miss ? ' opt-off' : '') + (incl ? ' opt-incl' : ''), '<span class="tick"></span>', 'checkbox')
+            .replace('type="checkbox"', 'type="checkbox"' + (miss || incl ? ' disabled' : ''));
         }).join('') + '</div>';
       });
       ebody += '<p class="extras-note" id="extrasNote" role="status" hidden></p>';
@@ -355,7 +383,9 @@
       // материалът по подразбиране на модела (новите огнища са черна стомана)
       var mat = (modelOptions(m).material || []).filter(function (x) { return x.mo.default; })[0];
       var legs = (modelOptions(m).legs || []).filter(function (x) { return x.mo.default; })[0];
-      el.innerHTML = window.FPRender.render({ model: m, finish: mat ? mat.opt.render.finish : 'inox', legCm: legs ? legs.opt.render.leg_cm : 0, layout: L, id: 'th' + m.id, extras: {}, pattern: null, decoratedCount: 1 });
+      var inc = {};
+      (modelOptions(m).extras || []).forEach(function (x) { if (x.mo.default) inc[x.opt.render.extra || x.opt.code] = true; });
+      el.innerHTML = window.FPRender.render({ model: m, finish: mat ? mat.opt.render.finish : 'inox', legCm: legs ? legs.opt.render.leg_cm : 0, layout: L, id: 'th' + m.id, extras: inc, pattern: null, decoratedCount: 1 });
     });
   }
 
@@ -492,7 +522,7 @@
     if (state.custom) {
       state.custom = null;
     } else if (f && f.custom) {
-      state.custom = G.clampCustom(f.custom, { w: m.w, d: m.d, h: m.h }).dims;
+      state.custom = G.clampCustom(f.custom, { w: m.w, d: m.d, h: m.h }, m.shape).dims;
     }
     build();
     var tg = $('#customToggle');
@@ -503,7 +533,7 @@
     if (!k || e.target.type !== 'range' || !state.custom) return;
     var f = formOf(model());
     state.custom[k] = parseFloat(e.target.value);
-    var c = G.clampCustom(f.custom, state.custom);   // отношение височина/ширина
+    var c = G.clampCustom(f.custom, state.custom, model().shape);   // отношение височина/ширина
     state.custom = c.dims;
     syncDims();
     customMsg(c.messages);
@@ -515,7 +545,7 @@
     var f = formOf(model()), raw = {};
     raw.w = state.custom.w; raw.d = state.custom.d; raw.h = state.custom.h;
     raw[k] = e.target.value === '' ? NaN : e.target.value;
-    var c = G.clampCustom(f.custom, raw);
+    var c = G.clampCustom(f.custom, raw, model().shape);
     state.custom = c.dims;
     e.target.value = state.custom[k];
     syncDims();
@@ -818,7 +848,7 @@
   if (!model()) state.model = CAT.models[0].code;
   if (state.custom) {
     var sf = formOf(model());
-    state.custom = sf && sf.custom ? G.clampCustom(sf.custom, state.custom).dims : null;
+    state.custom = sf && sf.custom ? G.clampCustom(sf.custom, state.custom, model().shape).dims : null;
   }
   state.type = model().type;
   normalizeState();

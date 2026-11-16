@@ -18,9 +18,19 @@
     return fallback;
   }
 
+  /** Екстрите, включени в модела (капакът и скарата на барбекюто и т.н.) */
+  function included(m) {
+    var ex = {};
+    m.options.forEach(function (mo) {
+      var o = CAT.options[mo.id];
+      if (o && o.group === 'extras' && mo.default) ex[o.render.extra || o.code] = true;
+    });
+    return ex;
+  }
+
   function scene(m, i, opts) {
     opts = opts || {};
-    var simple = ['pedestal', 'cross', 'ringbowl', 'trapezoid'].indexOf(m.shape) >= 0;
+    var simple = ['pedestal', 'cross', 'ringbowl', 'trapezoid', 'plancha', 'plancha_sq', 'insert', 'suitcase', 'bbq', 'grill', 'tabletop', 'cheverme'].indexOf(m.shape) >= 0;
     var pattern = opts.pattern !== undefined ? opts.pattern : simple ? null : PATTERNS[i % PATTERNS.length];
     var sides = opts.sides || (G.modelWalls(m).length > 1 ? 2 : 1), walls = G.decoratedWalls(m, sides), text = '', fit = null;
     var list = opts.text ? [opts.text] : SAMPLES.slice(i).concat(SAMPLES.slice(0, i));
@@ -31,7 +41,7 @@
     return R.render({
       model: m, finish: opts.finish || def(m, 'material', 'finish', 'inox'), legCm: def(m, 'legs', 'leg_cm', 0),
       text: text, fit: fit, fontKey: 'russo', fonts: FONTS, pattern: pattern, decoratedCount: walls.length,
-      extras: m.shape === 'grill' ? { grate: true } : {}, layout: L, id: (opts.id || 'g') + i, title: m.name
+      extras: included(m), layout: L, id: (opts.id || 'g') + i, title: m.name
     });
   }
 

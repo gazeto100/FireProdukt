@@ -320,6 +320,8 @@ h1, h2, h3 { font-family: var(--head); font-weight: 400; line-height: 1.2; margi
 /* Екстри: недостъпни и бележка */
 .opt-off { opacity: .55; cursor: not-allowed; }
 .opt-off .opt-in { background: #f6f3ef; }
+.opt-incl { cursor: default; }
+.opt-incl small { color: var(--ember); font-weight: 600; }
 .extras-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #fff4ec; color: #8a3c00; font-size: .88rem; }
 
 /* Начална страница: карти по форма, по две на ред на телефон */

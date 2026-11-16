@@ -73,7 +73,7 @@ admin_header('Запитвания', 'inquiries');
   <a class="row card<?= $isProj ? ' row-project' : '' ?>" href="inquiry.php?id=<?= (int)$r['id'] ?>">
     <div class="row-main">
       <?php if ($isProj): ?><span class="badge badge-project">Проект</span><?php endif; ?>
-      <?php if (!empty($cfg['custom'])): ?><span class="badge badge-custom">Размер по избор: <?= e(in_array($cfg['model']['shape'] ?? '', ['hex', 'octagon', 'cross', 'ringbowl'], true) ? 'Ø' . fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['h']) : fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['d']) . ' × ' . fmt_num($cfg['model']['h'])) ?> см</span><?php endif; ?>
+      <?php if (!empty($cfg['custom'])): ?><span class="badge badge-custom">Размер по избор: <?= e(shape_is_round((string)($cfg['model']['shape'] ?? '')) ? 'Ø' . fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['h']) : fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['d']) . ' × ' . fmt_num($cfg['model']['h'])) ?> см</span><?php endif; ?>
       <?php if (!empty($cfg['pallet'])): ?><span class="badge badge-flag">палет</span><?php endif; ?>
       <?php if (!empty($cfg['two_parts'])): ?><span class="badge badge-flag">2 части</span><?php endif; ?>
       <span class="badge st-<?= e($r['status']) ?>"><?= e($statuses[$r['status']] ?? $r['status']) ?></span>

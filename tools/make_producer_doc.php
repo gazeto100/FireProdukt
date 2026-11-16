@@ -10,7 +10,7 @@ require dirname(__DIR__) . '/inc/bootstrap.php';
 
 $cat = load_catalog(true);
 $S = $cat['settings'];
-$round = ['hex', 'octagon', 'cross', 'ringbowl'];
+$round = ROUND_SHAPES;
 $n = fn($v) => fmt_num($v);
 $cell = fn($s) => str_replace(['|', "\n"], ['/', ' '], (string)$s);
 
@@ -47,24 +47,63 @@ $notFit = [];
 $bentOver = []; // стандартни размери, при които огънат корпус от едно парче не би се побрал в листа
 $constrName = ['panels' => 'отделни панели', 'bent' => 'огънат корпус от едно парче'];
 // как се показва конструкцията: кръстатото е от плочи, купата – валцуван пръстен (проверка по обиколката)
-$constrOf = fn(array $f) => $f['shape'] === 'cross' ? 'две плочи на прорези' : ($f['shape'] === 'ringbowl' ? 'валцуван пръстен + купа' : $constrName[$f['construction'] ?? 'panels']);
-foreach ($cat['models'] as $m) {
+$constrOf = function (array $f, string $shape = '') use ($constrName): string {
+    $sh = $shape !== '' ? $shape : $f['shape'];
+    if ($sh === 'cross') return 'две плочи на прорези';
+    if ($sh === 'ringbowl') return 'валцуван пръстен + купа';
+    if ($sh === 'plancha') return $shape === '' ? 'основа (кръгла – валцувана, квадратна – панели) + плоча' : 'валцувана основа + плоча';
+    if ($sh === 'plancha_sq') return 'отделни панели + плоча';
+    return $constrName[$f['construction'] ?? 'panels'];
+};
+// опции по група за модела: [код => опция]
+$modelOpts = function (array $m, string $group) use ($cat): array {
+    $out = [];
+    foreach ($m['options'] as $mo) {
+        $o = $cat['options'][$mo['id']];
+        if ($o['group'] === $group) $out[$o['code']] = $o + ['included' => $mo['default']];
+    }
+    return $out;
+};
+// редове по вид и форма (както в конфигуратора), после по размер
+$mByCode = array_column($cat['models'], null, 'code');
+$ordered = [];
+foreach ($cat['forms'] as $fm) {
+    foreach ($fm['models'] as $c) $ordered[] = $mByCode[$c];
+}
+foreach ($ordered as $m) {
     $f = $formOf[$m['code']] ?? null;
     $v = validate_config(['model' => $m['code'], 'quantity' => 1], $cat);
     $mat = $v['config']['options']['material']['code'] ?? '';
     $mo = $matByCode[$mat] ?? null;
-    $v3 = isset($matByCode['inox3']) ? validate_config(['model' => $m['code'], 'options' => ['material' => 'inox3'], 'quantity' => 1], $cat) : null;
+    $v3 = isset($modelOpts($m, 'material')['inox3']) ? validate_config(['model' => $m['code'], 'options' => ['material' => 'inox3'], 'quantity' => 1], $cat) : null;
     $dims = in_array($m['shape'], $round, true) ? 'Ø' . $n($m['w']) . ' × ' . $n($m['h']) : $n($m['w']) . ' × ' . $n($m['d']) . ' × ' . $n($m['h']);
+    $customOnly = !empty($f['custom_only']);
+    if ($customOnly) {
+        $v = validate_config(['model' => $m['code'], 'custom' => ['w' => $m['w'], 'd' => $m['d'], 'h' => $m['h']], 'quantity' => 1], $cat);
+        $dims = 'по мярка, напр. ' . $dims;
+    }
     $sf = sheet_fit($m, $f['construction'] ?? 'panels');
     $note = [];
     if (!$sf['fits']) { $note[] = 'не се побира в листа: ' . $sf['part']; $notFit[] = ($f['name'] ?? $m['name']) . ' ' . $m['size_label'] . ' (' . $sf['part'] . ')'; }
-    if (($f['construction'] ?? 'panels') === 'panels' && !in_array($m['shape'], ['cross', 'ringbowl'], true) && !sheet_fit($m, 'bent')['fits']) {
+    if (!$customOnly && ($f['construction'] ?? 'panels') === 'panels' && !in_array($m['shape'], ['cross', 'ringbowl', 'plancha', 'plancha_sq'], true) && !sheet_fit($m, 'bent')['fits']) {
         $bentOver[] = $m + ['form_name' => $f['name'] ?? $m['name']];
     }
+    // плоча за печене: теглото според дебелината
+    $plates = $modelOpts($m, 'plate');
+    if ($plates) {
+        $pw = [];
+        foreach ($plates as $pc => $po) {
+            $pv = validate_config(['model' => $m['code'], 'options' => ['plate' => $pc], 'quantity' => 1], $cat);
+            $pw[] = $po['render']['plate_mm'] . ' мм – ' . $n($pv['weight']['kg']) . ' кг';
+        }
+        $note[] = 'плоча Ø/страна ' . $n($m['w']) . ' см с отвор ' . $n(round(PLANCHA_HOLE * $m['w'])) . ' см; общо тегло с плоча ' . implode(', ', $pw);
+    }
+    $inc = array_keys(array_filter($modelOpts($m, 'extras'), fn($o) => $o['included']));
+    if ($inc) $note[] = 'включено: ' . implode(', ', array_map(fn($c) => $modelOpts($m, 'extras')[$c]['name'], $inc));
     if ($v['config']['pallet']) $note[] = 'над ' . $n($S['pallet_kg']) . ' кг – палет';
     elseif ($v3 && $v3['config']['pallet']) $note[] = 'над ' . $n($S['pallet_kg']) . ' кг при инокс 3 мм – палет';
     $out[] = '| ' . implode(' | ', array_map($cell, [
-        $typeName[$m['type']] ?? $m['type'], $f['name'] ?? $m['name'], ($f ? $constrOf($f) : '—'), $m['size_label'] ?: '—', $dims,
+        $typeName[$m['type']] ?? $m['type'], $f['name'] ?? $m['name'], ($f ? $constrOf($f, $m['shape']) : '—'), $m['size_label'] ?: '—', $dims,
         $mo['name'] ?? '—', $n($mo['render']['thickness_mm'] ?? 2), number_format((float)$v['weight']['area_m2'], 2, ',', ''),
         $n($v['weight']['kg']), $v3 ? $n($v3['weight']['kg']) : '—', $note ? implode('; ', $note) : '',
     ])) . ' |';
@@ -80,16 +119,16 @@ $out[] = '';
 // 2. Размер по избор
 $out[] = '## 2. Размер по избор (планирани граници)';
 $out[] = '';
-$out[] = 'Клиентът ще може да зададе собствен размер в тези граници през ' . $n(5) . ' см. Кажете ни, ако някоя граница е нереалистична за вас.';
+$out[] = 'Клиентът ще може да зададе собствен размер в тези граници. Кажете ни, ако някоя граница е нереалистична за вас.';
 $out[] = '';
-$out[] = '| Форма | Ширина / диаметър, см | Дълбочина, см | Височина, см | Макс. височина спрямо ширината |';
-$out[] = '|---|---|---|---|---|';
+$out[] = '| Форма | Ширина / диаметър, см | Дълбочина, см | Височина, см | Стъпка, см | Макс. височина спрямо ширината |';
+$out[] = '|---|---|---|---|---|---|';
 foreach ($cat['forms'] as $f) {
     $c = $f['custom'];
-    if (!$c) { $out[] = '| ' . $cell($f['name']) . ' | не се предлага | | | |'; continue; }
+    if (!$c) { $out[] = '| ' . $cell($f['name']) . ' | не се предлага | | | | |'; continue; }
     $sq = $c['mode'] !== 'wdh';
-    $out[] = '| ' . implode(' | ', array_map($cell, [$f['name'], $n($c['w_min']) . '–' . $n($c['w_max']), $sq ? '= ширината' : $n($c['d_min']) . '–' . $n($c['d_max']),
-        $n($c['h_min']) . '–' . $n($c['h_max']), '× ' . $n($c['max_h_ratio'])])) . ' |';
+    $out[] = '| ' . implode(' | ', array_map($cell, [$f['name'] . (!empty($f['custom_only']) ? ' (само по мярка)' : ''), $n($c['w_min']) . '–' . $n($c['w_max']), $sq ? '= ширината' : $n($c['d_min']) . '–' . $n($c['d_max']),
+        $n($c['h_min']) . '–' . $n($c['h_max']) . ($f['shape'] === 'insert' ? ' (борд)' : ''), $n($c['step']), '× ' . $n($c['max_h_ratio'])])) . ' |';
 }
 $out[] = '';
 
@@ -123,17 +162,23 @@ $formsFor = function (int $oid) use ($cat, $formOf): string {
 };
 $out[] = '## 4. Екстри';
 $out[] = '';
+$includedIn = [];
+foreach ($cat['models'] as $m) {
+    foreach ($m['options'] as $mo) {
+        if ($mo['default'] && $cat['options'][$mo['id']]['group'] === 'extras') $includedIn[$mo['id']][$formOf[$m['code']]['name'] ?? $m['name']] = true;
+    }
+}
 $out[] = '| Екстра | Група | Описание | За кои форми | Тегло (ориент.), кг | Правила |';
 $out[] = '|---|---|---|---|---|---|';
 foreach ($cat['options'] as $o) {
     if ($o['group'] !== 'extras') continue;
     $out[] = '| ' . implode(' | ', array_map($cell, [$o['name'], $sub[$o['subgroup']] ?? '—', $o['hint'], $formsFor($o['id']), $n($o['weight_kg']),
-        implode('; ', array_unique($rulesTxt[$o['id']] ?? []))])) . ' |';
+        implode('; ', array_merge(array_unique($rulesTxt[$o['id']] ?? []), isset($includedIn[$o['id']]) ? ['включено в модела при: ' . implode(', ', array_keys($includedIn[$o['id']]))] : []))])) . ' |';
 }
 $out[] = '';
 $out[] = 'Други опции, които засягат изработката:';
 $out[] = '';
-foreach (['legs' => 'Крачета', 'ornament' => 'Орнамент (изрязва се на всяка декорирана страна)', 'sides' => 'Декорирани страни'] as $g => $label) {
+foreach (['legs' => 'Крачета', 'plate' => 'Дебелина на плочата за печене (черна стомана, огнище с плоча)', 'text_place' => 'Място на надписа (барбекю с капак)', 'ornament' => 'Орнамент (изрязва се на всяка декорирана страна)', 'sides' => 'Декорирани страни'] as $g => $label) {
     $names = [];
     foreach ($cat['options'] as $o) {
         if ($o['group'] === $g) $names[] = $o['name'];
@@ -155,16 +200,23 @@ $q = [
     'Работите ли с кортен? Откъде го доставяте, в какви дебелини и формати, и предлагате ли предварителна патина?',
     'Каква е цената на перфорация с щанца спрямо лазерно изрязана перфорация (за панел около 50 × 35 см, гъста и рядка)? Кое препоръчвате?',
     'Каква надценка взимате за индивидуален размер спрямо серийния? Приели сме ' . $n(setting('custom_surcharge_pct', '20')) . ' % плюс фиксирана сума за подготовка по форма.',
+    'Огнище с плоча за печене: каква дебелина препоръчвате – 6, 8 или 10 мм, и от каква стомана? Как предпазвате плочата от изкривяване при нагряване (ребра, подсилващ пръстен)? Основата на кръглия вариант цилиндрична ли да е или конусовидна? Каква е разликата в цената между 6, 8 и 10 мм?',
+    'Надпис на капака (мангал куфар, барбекю): прорязаният надпис се чете правилно само от едната страна. Кое предпочитате – да се чете отвън при затворен капак или отвътре при отворен (докато се пече)? В изгледа го показваме отвътре, при отворен капак.',
+    'Мангал куфар: можете ли да изработите пантите, закопчалката, дръжката и сгъваемите крака, или ги купувате готови? Каква е минималната дебелина, при която куфарът остава лек и не се изкривява?',
+    'Стойка за чеверме: доставяте ли мотор за шиша (220 V, за агне до около 20 кг) или да предвидим готов от търговията? Какъв диаметър и материал на шиша препоръчвате и на колко нива да са прорезите на стойките?',
+    'Барбекю с капак: единична стена ли е достатъчна или препоръчвате двойна стена / изолация на капака? Термометърът готов ли се купува?',
+    'Вложка за зидано барбекю: изработваме по мярка на клиента със стъпка 1 см. Какъв допуск ви трябва спрямо отвора в зидарията и каква дебелина препоръчвате за тавата и за скарата?',
 ];
-$panelForms = array_map(fn($f) => $f['name'], array_filter($cat['forms'], fn($f) => $f['construction'] === 'panels' && !in_array($f['shape'], ['cross', 'ringbowl'], true)));
+$panelForms = array_map(fn($f) => $f['name'], array_filter($cat['forms'], fn($f) => $f['construction'] === 'panels' && !in_array($f['shape'], ['cross', 'ringbowl', 'plancha'], true)));
 $qc = 'Приели сме, че тези форми се сглобяват от отделни панели (всяка стена и дъното са отделен детайл, при постамента – кутията): ' . implode(', ', $panelForms) . '. Потвърждавате ли? Как съединявате панелите – заварка, болтове, сгънати ръбове?';
 if ($bentOver) {
     $list = [];
     foreach ($bentOver as $b) {
         $wm = $b['w'] * 10; $dm = $b['d'] * 10; $hm = $b['h'] * 10;
         $wallW = $b['shape'] === 'trapezoid' ? $wm + 2 * 0.22 * $hm : $wm;
-        $list[] = sprintf('   - **%s %s** – стени %s × %s мм (4 бр.), дъно %s × %s мм. Огънат от едно парче, корпусът би изисквал заготовка %s мм, а късата страна на листа е %s мм.',
-            $b['form_name'], $b['size_label'], $n(round($wallW)), $n($hm), $n($wm), $n($dm), $n($wm + 2 * $hm), $n(min($S['sheet_w_mm'], $S['sheet_h_mm'])));
+        $walls = abs($wm - $dm) < 1 ? sprintf('стени %s × %s мм (4 бр.)', $n(round($wallW)), $n($hm)) : sprintf('стени %s × %s и %s × %s мм (по 2 бр.)', $n(round($wallW)), $n($hm), $n($dm), $n($hm));
+        $list[] = sprintf('   - **%s %s** – %s, дъно %s × %s мм. Огънат от едно парче, корпусът би изисквал заготовка %s мм, а късата страна на листа е %s мм.',
+            $b['form_name'], $b['size_label'], $walls, $n($wm), $n($dm), $n($wm + 2 * $hm), $n(min($S['sheet_w_mm'], $S['sheet_h_mm'])));
     }
     $qc .= ' При тези ' . count($list) . ' стандартни размера панелите се побират в листа, но огънат корпус от едно парче – не:' . "
 " . implode("

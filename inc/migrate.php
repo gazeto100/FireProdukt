@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 function run_migrations(): void
 {
@@ -61,6 +61,11 @@ function run_migrations(): void
             if (!db_all("SHOW COLUMNS FROM forms LIKE 'construction'")) {
                 db()->exec("ALTER TABLE forms ADD COLUMN construction ENUM('panels','bent') NOT NULL DEFAULT 'panels' AFTER shape");
             }
+        }
+        if ($v < 8) {
+            // етап 4: нови форми скари, плоча за печене, място на надписа, нови екстри, „само по мярка“
+            require_once __DIR__ . '/migrate_v8.php';
+            migrate_v8();
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {

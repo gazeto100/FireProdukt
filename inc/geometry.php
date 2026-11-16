@@ -9,6 +9,25 @@ declare(strict_types=1);
 const TEXT_MAX_CHARS = 40;   // технически таван срещу злоупотреба (не се показва на клиента)
 const TEXT_MAX_LINES = 2;
 
+/** Кръгли форми: размерът е диаметър (Ø) × височина. Огледало на ROUND_SHAPES в geometry.js */
+const ROUND_SHAPES = ['hex', 'octagon', 'cross', 'ringbowl', 'plancha'];
+
+/**
+ * Пропорции на новите форми (етап 4) – огледало в geometry.js и render.js:
+ * огнище с плоча: основа = 0,62 × Ø (ширина), отвор за огъня = 0,45 × Ø, панел за надписа = 0,85 × височината;
+ * при кръглата основа се вижда плосък участък 0,7 × Ø на основата; барбекю: капак = 0,6 × височината на корпуса.
+ */
+const PLANCHA_BASE = 0.62;
+const PLANCHA_HOLE = 0.45;
+const PLANCHA_PANEL_H = 0.85;
+const PLANCHA_CHORD = 0.7;
+const BBQ_LID = 0.6;
+
+function shape_is_round(string $shape): bool
+{
+    return in_array($shape, ROUND_SHAPES, true);
+}
+
 function geometry_layout(): array
 {
     return [
@@ -19,7 +38,8 @@ function geometry_layout(): array
         'band_orn' => [0.10, 0.42],       // зона за орнамента
         'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
         // форми със собствена зона за надписа: постамент – над отвора за дърва; кръстато – горната част на плочата
-        'shape_bands' => ['pedestal' => [0.08, 0.46], 'cross' => [0.10, 0.46]],
+        // огнище с плоча – горната част на основата, под плочата
+        'shape_bands' => ['pedestal' => [0.08, 0.46], 'cross' => [0.10, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50]],
         'max_chars' => TEXT_MAX_CHARS,
         'max_lines' => TEXT_MAX_LINES,
     ];
@@ -93,7 +113,24 @@ function model_walls(array $m): array
         case 'ringbowl':
             // пръстенът под купата: Ø = 0,72·Ø купа, височина = 0,55·общата; надписът е в предната му част
             return [[$m['w'] * 10 * 0.72 * 0.62, $h * 0.55]];
+        case 'suitcase':
+            // мангал куфар: надписът е на капака (ширина × дълбочина)
+            return [[$m['w'] * 10, $m['d'] * 10]];
+        case 'bbq':
+            // барбекю: на капака (ширина × дълбочина) или на предната стена – според избора „Място на надписа“
+            if (($m['text_place'] ?? '') === 'lid') {
+                return [[$m['w'] * 10, $m['d'] * 10]];
+            }
+            return [[$m['w'] * 10, $h], [$m['d'] * 10, $h], [$m['w'] * 10, $h], [$m['d'] * 10, $h]];
+        case 'plancha':
+            // кръгла основа: плосък видим участък отпред
+            return [[$m['w'] * 10 * PLANCHA_BASE * PLANCHA_CHORD, $h * PLANCHA_PANEL_H]];
+        case 'plancha_sq':
+            return [[$m['w'] * 10 * PLANCHA_BASE, $h * PLANCHA_PANEL_H]];
         case 'grill':
+        case 'tabletop':
+        case 'cheverme':
+        case 'insert':
         case 'box':
         default:
             $w = $m['w'] * 10;
@@ -230,9 +267,37 @@ function sheet_area_m2(array $m): float
         case 'ringbowl':
             $r = $w / 2;
             return (M_PI * $r * $r * 1.3 + M_PI * 0.72 * $w * 0.55 * $h) / 10000;
+        case 'suitcase':
+            // тава + капак (борд 2 см) + 4 сгъваеми крака 25 × 4 см
+            return ($w * $d + 2 * ($w + $d) * $h + $w * $d + 2 * ($w + $d) * 2 + 400) / 10000;
+        case 'bbq':
+            // корпус + капак (0,6 × височината) + стойка: 4 крака 75 × 8 см
+            return ($w * $d + 2 * ($w + $d) * $h + $w * $d + 2 * ($w + $d) * BBQ_LID * $h + 2400) / 10000;
+        case 'plancha':
+            // кръгла основа + огнена кутия (Ø 0,45, дълбочина 0,3 × височината); плочата се смята отделно (plate_area_m2)
+            return (M_PI * PLANCHA_BASE * $w * $h + M_PI * PLANCHA_HOLE * $w * 0.3 * $h + M_PI * (PLANCHA_HOLE * $w / 2) ** 2) / 10000;
+        case 'plancha_sq':
+            return (4 * PLANCHA_BASE * $w * $h + M_PI * PLANCHA_HOLE * $w * 0.3 * $h + M_PI * (PLANCHA_HOLE * $w / 2) ** 2) / 10000;
+        case 'cheverme':
+            // корито + 2 стойки (90 × 6 см + стъпка 40 × 6 см) + 4 крачета 15 × 6 см + шиш
+            return ($w * $d + 2 * ($w + $d) * $h + 1560 + 360 + 4 * $w) / 10000;
         default:
             return ($w * $d + 2 * ($w + $d) * $h) / 10000;
     }
+}
+
+/** Площ на плочата за печене (m²) – пръстен около отвора за огъня; 0 за формите без плоча. Огледало на plateArea() */
+function plate_area_m2(array $m): float
+{
+    $w = $m['w'];
+    $hole = M_PI * (PLANCHA_HOLE * $w / 2) ** 2;
+    if ($m['shape'] === 'plancha') {
+        return (M_PI * ($w / 2) ** 2 - $hole) / 10000;
+    }
+    if ($m['shape'] === 'plancha_sq') {
+        return ($w * $w - $hole) / 10000;
+    }
+    return 0.0;
 }
 
 /* ---------- Размер по избор (етап 3, част В) ---------- */
@@ -240,7 +305,7 @@ function sheet_area_m2(array $m): float
 /** Какви полета има формата: dh – диаметър и височина; wh – квадрат (ширина = дълбочина); wdh – ширина, дълбочина, височина */
 function form_dims_mode(string $shape, array $models): string
 {
-    if (in_array($shape, ['hex', 'octagon', 'cross', 'ringbowl'], true)) {
+    if (shape_is_round($shape)) {
         return 'dh';
     }
     foreach ($models as $m) {
@@ -255,7 +320,7 @@ function form_dims_mode(string $shape, array $models): string
  * Проверява размер по избор спрямо границите на формата.
  * Връща ['dims' => [w, d, h], 'errors' => [...]] – грешка за всяка стойност извън границите или извън стъпката.
  */
-function custom_dims_check(array $form, array $in): array
+function custom_dims_check(array $form, array $in, string $shape = ''): array
 {
     $mode = $form['custom']['mode'];
     $lim = $form['custom'];
@@ -264,7 +329,9 @@ function custom_dims_check(array $form, array $in): array
     $d = $mode === 'wdh' ? $num('d') : $w;
     $h = $num('h');
     $err = [];
-    $label = ['w' => $mode === 'dh' ? 'Диаметърът' : 'Ширината', 'd' => 'Дълбочината', 'h' => 'Височината'];
+    // формата може да има кръгли и квадратни размери (огнище с плоча) – етикетът е по избрания размер
+    $round = $shape !== '' ? shape_is_round($shape) : $mode === 'dh';
+    $label = ['w' => $round ? 'Диаметърът' : 'Ширината', 'd' => 'Дълбочината', 'h' => 'Височината'];
     $check = $mode === 'wdh' ? ['w' => $w, 'd' => $d, 'h' => $h] : ['w' => $w, 'h' => $h]; // при квадрат/кръг дълбочината = ширината
     foreach ($check as $k => $v) {
         if ($v === null) {
@@ -311,6 +378,17 @@ function sheet_fit(array $m, string $construction = 'panels'): array
             break;
         case 'cross':
             $parts[] = [$w, $h, 'плоча ' . $mm($w) . '×' . $mm($h) . ' мм'];
+            break;
+        case 'plancha':
+            // кръгла основа – валцувана, по обиколката; плочата – кръг Ø
+            $circ = M_PI * PLANCHA_BASE * $w;
+            if ($circ > $L) return ['fits' => false, 'part' => 'основа с обиколка ' . $mm($circ) . ' мм (листът е ' . $mm($L) . ' мм)'];
+            $parts[] = [$circ, $h, 'основа ' . $mm($circ) . '×' . $mm($h) . ' мм'];
+            $parts[] = [$w, $w, 'плоча Ø' . $mm($w) . ' мм'];
+            break;
+        case 'plancha_sq':
+            $parts[] = [PLANCHA_BASE * $w, $h, 'стена на основата ' . $mm(PLANCHA_BASE * $w) . '×' . $mm($h) . ' мм'];
+            $parts[] = [$w, $w, 'плоча ' . $mm($w) . '×' . $mm($w) . ' мм'];
             break;
         case 'hex':
         case 'octagon':

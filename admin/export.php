@@ -52,7 +52,7 @@ foreach ($rows as $r) {
     $c = json_decode($r['config_json'], true) ?: [];
     $o = $c['options'] ?? [];
     $m = $c['model'] ?? [];
-    $round = in_array($m['shape'] ?? '', ['hex', 'octagon', 'cross', 'ringbowl'], true);
+    $round = shape_is_round((string)($m['shape'] ?? ''));
     $dims = $m ? ($round ? 'Ø' . fmt_num($m['w']) . ' × ' . fmt_num($m['h']) : fmt_num($m['w']) . ' × ' . fmt_num($m['d']) . ' × ' . fmt_num($m['h'])) : '';
     $isP = $r['kind'] === 'project';
     if ($isP) {

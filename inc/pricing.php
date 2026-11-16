@@ -52,6 +52,10 @@ function calc_weight(array $model, array $sel): array
             $density = (float)($o['render']['density'] ?? $density);
         }
         $extra += $o['weight_kg'];
+        // плоча за печене: теглото е от избраната дебелина (черна стомана 7,85 кг/дм³)
+        if (is_array($o['render']) && !empty($o['render']['plate_mm'])) {
+            $extra += plate_area_m2($model) * (float)$o['render']['plate_mm'] * 7.85;
+        }
     }
     $area = sheet_area_m2($model);
     // м² × мм × кг/дм³ = кг  (1 м² × 1 мм = 1 дм³)

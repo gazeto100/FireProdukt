@@ -6,6 +6,11 @@
 
   function chars(t) { return Array.from(t); }
 
+  /** Кръгли форми (Ø × височина) и пропорции на новите форми – огледало на inc/geometry.php */
+  var ROUND_SHAPES = ['hex', 'octagon', 'cross', 'ringbowl', 'plancha'];
+  var PROP = { planchaBase: 0.62, planchaHole: 0.45, planchaPanelH: 0.85, planchaChord: 0.7, bbqLid: 0.6 };
+  function isRound(shape) { return ROUND_SHAPES.indexOf(shape) >= 0; }
+
   /** До 2 реда, всеки без излишни интервали (като text_lines() в PHP) */
   function textLines(t, L) {
     var max = (L && L.max_lines) || 2;
@@ -43,6 +48,9 @@
     }
     if (m.shape === 'cross') return [[m.w * 10 / 2, h]];
     if (m.shape === 'ringbowl') return [[m.w * 10 * 0.72 * 0.62, h * 0.55]];
+    if (m.shape === 'suitcase' || (m.shape === 'bbq' && m.text_place === 'lid')) return [[m.w * 10, m.d * 10]];
+    if (m.shape === 'plancha') return [[m.w * 10 * PROP.planchaBase * PROP.planchaChord, h * PROP.planchaPanelH]];
+    if (m.shape === 'plancha_sq') return [[m.w * 10 * PROP.planchaBase, h * PROP.planchaPanelH]];
     var w = m.w * 10, d = m.d * 10;
     return [[w, h], [d, h], [w, h], [d, h]];
   }
@@ -137,6 +145,12 @@
     if (m.shape === 'pedestal') { var rp = 0.45 * w; return (4 * w * h + w * d + Math.PI * rp * rp * 1.25) / 10000; }
     if (m.shape === 'cross') return 2 * w * h / 10000;
     if (m.shape === 'ringbowl') return (Math.PI * r * r * 1.3 + Math.PI * 0.72 * w * 0.55 * h) / 10000;
+    if (m.shape === 'suitcase') return (w * d + 2 * (w + d) * h + w * d + 2 * (w + d) * 2 + 400) / 10000;
+    if (m.shape === 'bbq') return (w * d + 2 * (w + d) * h + w * d + 2 * (w + d) * PROP.bbqLid * h + 2400) / 10000;
+    var fb = Math.PI * PROP.planchaHole * w * 0.3 * h + Math.PI * Math.pow(PROP.planchaHole * w / 2, 2);
+    if (m.shape === 'plancha') return (Math.PI * PROP.planchaBase * w * h + fb) / 10000;
+    if (m.shape === 'plancha_sq') return (4 * PROP.planchaBase * w * h + fb) / 10000;
+    if (m.shape === 'cheverme') return (w * d + 2 * (w + d) * h + 1560 + 360 + 4 * w) / 10000;
     return (w * d + 2 * (w + d) * h) / 10000;
   }
 
@@ -157,6 +171,14 @@
     return { unit_min: uMin, unit_max: uMax, min: uMin * qty, max: uMax * qty };
   }
 
+  /** Площ на плочата за печене (m²); 0 за формите без плоча */
+  function plateArea(m) {
+    var w = m.w, hole = Math.PI * Math.pow(PROP.planchaHole * w / 2, 2);
+    if (m.shape === 'plancha') return (Math.PI * Math.pow(w / 2, 2) - hole) / 10000;
+    if (m.shape === 'plancha_sq') return (w * w - hole) / 10000;
+    return 0;
+  }
+
   function calcWeight(model, sel) {
     var t = 2, dens = 7.93, extra = 0;
     sel.forEach(function (s) {
@@ -166,6 +188,8 @@
         dens = parseFloat(o.render.density) || dens;
       }
       extra += o.weight_kg || 0;
+      // плоча за печене: теглото е от избраната дебелина (черна стомана 7,85 кг/дм³)
+      if (o.render && o.render.plate_mm) extra += plateArea(model) * parseFloat(o.render.plate_mm) * 7.85;
     });
     var area = sheetArea(model);
     return { kg: Math.round((area * t * dens + extra) * 10) / 10, area_m2: area };
@@ -177,9 +201,9 @@
    * Връща стойността към най-близката допустима (стъпка, мин./макс., отношение височина/ширина).
    * lim = form.custom; dims = {w, d, h}. Връща {dims, messages}.
    */
-  function clampCustom(lim, dims) {
+  function clampCustom(lim, dims, shape) {
     var out = { w: dims.w, d: dims.d, h: dims.h }, msgs = [], step = lim.step;
-    var label = { w: lim.mode === 'dh' ? 'Диаметърът' : 'Ширината', d: 'Дълбочината', h: 'Височината' };
+    var label = { w: (shape ? isRound(shape) : lim.mode === 'dh') ? 'Диаметърът' : 'Ширината', d: 'Дълбочината', h: 'Височината' };
     var keys = lim.mode === 'wdh' ? ['w', 'd', 'h'] : ['w', 'h'];
     keys.forEach(function (k) {
       var v = parseFloat(String(out[k]).replace(',', '.'));
@@ -212,6 +236,14 @@
       parts.push([w, w, 'дъно на купата Ø' + mm(w) + ' мм']);
     } else if (m.shape === 'cross') {
       parts.push([w, h, 'плоча ' + mm(w) + '×' + mm(h) + ' мм']);
+    } else if (m.shape === 'plancha') {
+      var pc = Math.PI * PROP.planchaBase * w;
+      if (pc > L) return { fits: false, part: 'основа с обиколка ' + mm(pc) + ' мм (листът е ' + mm(L) + ' мм)' };
+      parts.push([pc, h, 'основа ' + mm(pc) + '×' + mm(h) + ' мм']);
+      parts.push([w, w, 'плоча Ø' + mm(w) + ' мм']);
+    } else if (m.shape === 'plancha_sq') {
+      parts.push([PROP.planchaBase * w, h, 'стена на основата ' + mm(PROP.planchaBase * w) + '×' + mm(h) + ' мм']);
+      parts.push([w, w, 'плоча ' + mm(w) + '×' + mm(w) + ' мм']);
     } else if (m.shape === 'hex' || m.shape === 'octagon') {
       var n = m.shape === 'hex' ? 6 : 8, side = m.shape === 'hex' ? w / 2 : w * Math.sin(Math.PI / 8);
       if (bent) parts.push([n * side, h, 'разгъната заготовка ' + mm(n * side) + '×' + mm(h) + ' мм']);
@@ -253,6 +285,10 @@
   }
 
   global.FPGeo = {
+    ROUND_SHAPES: ROUND_SHAPES,
+    PROP: PROP,
+    isRound: isRound,
+    plateArea: plateArea,
     clampCustom: clampCustom,
     sheetFit: sheetFit,
     calcPriceCustom: calcPriceCustom,

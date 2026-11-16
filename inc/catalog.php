@@ -114,6 +114,8 @@ function load_catalog(bool $activeOnly = true): array
             $forms[$fc] = ['code' => $fc, 'name' => $fr['name'] ?? $m['name'], 'type' => $m['type'], 'shape' => $fr['shape'] ?? $m['shape'],
                 'description' => $fr['description'] ?? $m['description'], 'sort' => (int)($fr['sort'] ?? 99), 'models' => [],
                 'construction' => ($fr['construction'] ?? 'panels') === 'bent' ? 'bent' : 'panels',
+                // поръчва се само по мярка (стандартният ред е само основа за опциите)
+                'custom_only' => !empty($fr['custom_only']) && !empty($fr['custom_enabled']),
                 // граници за размер по избор (null = формата няма размер по избор)
                 'custom' => $fr && !empty($fr['custom_enabled']) && $fr['w_min'] !== null ? [
                     'w_min' => (float)$fr['w_min'], 'w_max' => (float)$fr['w_max'], 'd_min' => (float)$fr['d_min'], 'd_max' => (float)$fr['d_max'],
