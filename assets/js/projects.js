@@ -1,31 +1,8 @@
-/* Страница „За хотели и къщи за гости“: галерия (същият рендер) и запитване по проект с лого */
+/* Страница „За хотели и къщи за гости“: кратко запитване по проект с лого (картите рисува home.js) */
 (function () {
   'use strict';
-  var ITEMS = window.FP_SHOWCASE || [], CFG = window.FP_PCFG, R = window.FPRender, G = window.FPGeo;
-  var $ = function (s, r) { return (r || document).querySelector(s); };
-
-  /* ---------- галерия ---------- */
-  function drawGallery() {
-    Array.prototype.forEach.call(document.querySelectorAll('[data-showcase]'), function (card) {
-      var it = ITEMS.filter(function (x) { return x.code === card.getAttribute('data-showcase'); })[0];
-      if (!it || !R) return;
-      var o = { id: 'sc' + it.code };
-      if (it.kind === 'column') {
-        // логото е изрязано горе, отдолу – борове; собствени зони за колоната
-        var L = Object.assign({}, CFG.layout, { band_orn_text: [0.07, 0.24], band_orn: [0.32, 0.93] });
-        var walls = [[it.w * 10, it.h * 10], [it.dd * 10, it.h * 10]];
-        o.layout = L;
-        o.text = 'ЛОГО';
-        o.fit = G.textFit('ЛОГО', 'russo', walls, true, CFG.fonts, L);
-        o.pattern = 'pines';
-        o.fonts = CFG.fonts;
-        o.fontKey = 'russo';
-      }
-      card.querySelector('.g-img').innerHTML = R.renderShowcase(it, o);
-    });
-  }
-  drawGallery();
-  if (document.fonts && document.fonts.load) document.fonts.load("40px 'fp-russo'", 'ЛОГО').then(drawGallery, function () { /* */ });
+  var CFG = window.FP_PCFG;
+  var $ = function (sel, r) { return (r || document).querySelector(sel); };
 
   /* ---------- форма ---------- */
   var form = $('#projForm');

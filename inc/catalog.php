@@ -9,7 +9,8 @@ function load_catalog(bool $activeOnly = true): array
 {
     $act = $activeOnly ? ' WHERE active = 1' : '';
 
-    $types = db_all('SELECT id, code, name, hint FROM product_types' . $act . ' ORDER BY sort, id');
+    $hasProj = (bool)db_all("SHOW COLUMNS FROM product_types LIKE 'is_project'");
+    $types = db_all('SELECT id, code, name, hint' . ($hasProj ? ', is_project' : ', 0 AS is_project') . ' FROM product_types' . $act . ' ORDER BY sort, id');
     $groups = db_all('SELECT id, code, name, hint, multi, required FROM option_groups ORDER BY sort, id');
     $groupCode = [];
     foreach ($groups as &$g) {
@@ -40,9 +41,13 @@ function load_catalog(bool $activeOnly = true): array
     }
 
     $typeCodes = [];
+    $projectTypes = [];
     foreach ($types as &$t) {
         $t['id'] = (int)$t['id'];
+        // вид „по проект“: цена по оферта (не се показва), последната стъпка е проектната форма
+        $t['is_project'] = (bool)$t['is_project'];
         $typeCodes[$t['id']] = $t['code'];
+        if ($t['is_project']) $projectTypes[$t['code']] = true;
     }
     unset($t);
 
@@ -86,6 +91,7 @@ function load_catalog(bool $activeOnly = true): array
             'id' => (int)$m['id'],
             'code' => $m['code'],
             'type' => $typeCodes[$tid],
+            'project' => isset($projectTypes[$typeCodes[$tid]]),
             'name' => $m['name'],
             'form' => isset($formById[$fid]) ? $formById[$fid]['code'] : 'm' . $m['id'],
             'size_label' => (string)($m['size_label'] ?? ''),
@@ -169,10 +175,25 @@ function load_catalog(bool $activeOnly = true): array
     ];
 }
 
-/** Каталог за браузъра – без цени, ако са изключени от админа */
+/** Каталог за браузъра – без цени, ако са изключени от админа; при вид „по проект“ – никога с цени */
 function public_catalog(): array
 {
     $cat = load_catalog(true);
+    foreach ($cat['models'] as &$m) {
+        if (!empty($m['project'])) {
+            unset($m['price_min'], $m['price_max']);
+            foreach ($m['options'] as &$o) {
+                unset($o['price_min'], $o['price_max']);
+            }
+            unset($o);
+        }
+    }
+    unset($m);
+    $projForms = array_column(array_filter($cat['models'], fn($m) => !empty($m['project'])), 'form');
+    foreach ($cat['forms'] as &$fm) {
+        if ($fm['custom'] && in_array($fm['code'], $projForms, true)) unset($fm['custom']['fixed']);
+    }
+    unset($fm);
     if (!$cat['settings']['show_prices']) {
         foreach ($cat['models'] as &$m) {
             unset($m['price_min'], $m['price_max']);

@@ -14,16 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '') {
             flash('Въведете име на вида.', 'err');
         } elseif ($id) {
-            db()->prepare('UPDATE product_types SET name = ?, hint = ?, sort = ?, active = ? WHERE id = ?')
-                ->execute([mb_substr($name, 0, 100), trim((string)($_POST['hint'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0), isset($_POST['active']) ? 1 : 0, $id]);
+            db()->prepare('UPDATE product_types SET name = ?, hint = ?, sort = ?, active = ?, is_project = ? WHERE id = ?')
+                ->execute([mb_substr($name, 0, 100), trim((string)($_POST['hint'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0), isset($_POST['active']) ? 1 : 0, isset($_POST['is_project']) ? 1 : 0, $id]);
             flash('Видът е запазен.');
         } elseif (!preg_match('/^[a-z0-9_]{2,32}$/', $code)) {
             flash('Кодът на вида: 2–32 малки латински букви, цифри или _.', 'err');
         } elseif (db_one('SELECT id FROM product_types WHERE code = ?', [$code])) {
             flash('Вече има вид с такъв код.', 'err');
         } else {
-            db()->prepare('INSERT INTO product_types (code, name, hint, sort, active) VALUES (?, ?, ?, ?, 1)')
-                ->execute([$code, mb_substr($name, 0, 100), trim((string)($_POST['hint'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0)]);
+            db()->prepare('INSERT INTO product_types (code, name, hint, sort, active, is_project) VALUES (?, ?, ?, ?, 1, ?)')
+                ->execute([$code, mb_substr($name, 0, 100), trim((string)($_POST['hint'] ?? '')) ?: null, (int)($_POST['sort'] ?? 0), isset($_POST['is_project']) ? 1 : 0]);
             flash('Видът е добавен.');
         }
     }
@@ -63,7 +63,7 @@ admin_header('Модели', 'models');
 </div>
 
 <h2>Видове</h2>
-<p class="muted small">Стъпка 1 в конфигуратора. Вид без активни модели не се показва.</p>
+<p class="muted small">Стъпка 1 в конфигуратора. Вид без активни модели не се показва. „По проект“: цената никога не се показва („Цена по оферта“), последната стъпка е проектната форма (обект, срок, лого), запитването се записва като „Проект“, а формите не са на началната страница, а на „За хотели и къщи за гости“.</p>
 <div class="card">
   <?php foreach ($types as $t): ?>
     <form method="post" class="inline type-row">
@@ -72,6 +72,7 @@ admin_header('Модели', 'models');
       <label class="grow">Подсказка<input name="hint" value="<?= e($t['hint']) ?>"></label>
       <label class="narrow">Ред<input name="sort" type="number" value="<?= (int)$t['sort'] ?>"></label>
       <label class="check"><input type="checkbox" name="active" value="1" <?= $t['active'] ? 'checked' : '' ?>> Активен</label>
+      <label class="check"><input type="checkbox" name="is_project" value="1" <?= !empty($t['is_project']) ? 'checked' : '' ?>> По проект</label>
       <button class="a-btn a-btn-ghost">Запази</button>
       <code class="small muted"><?= e($t['code']) ?></code>
     </form>
@@ -84,6 +85,7 @@ admin_header('Модели', 'models');
       <label>Име<input name="name" required></label>
       <label class="grow">Подсказка<input name="hint"></label>
       <label class="narrow">Ред<input name="sort" type="number" value="10"></label>
+      <label class="check"><input type="checkbox" name="is_project" value="1"> По проект</label>
       <button class="a-btn">Добави</button>
     </form>
   </details>

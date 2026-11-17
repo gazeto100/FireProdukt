@@ -72,6 +72,8 @@ $notes = db_all('SELECT n.*, a.username FROM inquiry_notes n LEFT JOIN admins a 
 $mails = db_all('SELECT * FROM mail_log WHERE inquiry_id = ? ORDER BY id', [$id]);
 $tel = preg_replace('/[^\d+]/', '', $inq['phone']);
 $isProj = $inq['kind'] === 'project';
+// проект от конфигуратора: има модел и пълна конфигурация (преглед, размер, опции, надпис)
+$projCfg = $isProj && !empty($cfg['model']);
 $files = db_all('SELECT * FROM uploads WHERE inquiry_id = ? ORDER BY id', [$id]);
 
 admin_header('Запитване ' . $inq['public_code'], 'inquiries');
@@ -85,7 +87,10 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
 <div class="grid2">
   <section class="card">
     <?php if ($isProj): ?>
-      <h2>Запитване по проект</h2>
+      <h2>Запитване по проект<?= $projCfg ? ' <span class="muted small">(от конфигуратора)</span>' : '' ?></h2>
+      <?php if ($projCfg): ?>
+        <?php if ($inq['svg']): ?><div class="preview"><img src="svg.php?id=<?= (int)$id ?>" alt="Преглед"></div><?php else: ?><p class="muted">Няма запазен преглед.</p><?php endif; ?>
+      <?php endif; ?>
       <?php foreach ($files as $fl): ?>
         <div class="logo-box">
           <?php if (in_array($fl['ext'], ['png', 'jpg'], true)): ?>
@@ -111,6 +116,7 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
         <tr><th><?= e($k) ?></th><td><?= e($v) ?></td></tr>
       <?php endforeach; ?>
       <?php if (!$isProj): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b></td></tr><?php endif; ?>
+      <?php if ($projCfg && $inq['price_min'] !== null): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b> <span class="muted small">(не е показана на клиента – цена по оферта)</span></td></tr><?php endif; ?>
     </table>
     <details><summary>Конфигурация (JSON)</summary><pre><?= e(json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre></details>
   </section>

@@ -55,16 +55,17 @@ foreach ($rows as $r) {
     $round = shape_is_round((string)($m['shape'] ?? ''));
     $dims = $m ? ($round ? 'Ø' . fmt_num($m['w']) . ' × ' . fmt_num($m['h']) : fmt_num($m['w']) . ' × ' . fmt_num($m['d']) . ' × ' . fmt_num($m['h'])) : '';
     $isP = $r['kind'] === 'project';
-    if ($isP) {
+    if ($isP && !$m) {
+        // кратка проектна форма (без конфигурация)
         $m = ['name' => 'Проект'];
         $dims = '';
         $o = ['material' => ['name' => project_materials_short()[$c['material'] ?? ''] ?? '']];
     }
     $line = [
-        $r['public_code'], $isP ? 'Проект' : 'Конфигуратор', date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
+        $r['public_code'], $isP ? (!empty($c['model']) ? 'Проект (конфигуратор)' : 'Проект') : 'Конфигуратор', date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
         $r['name'], $r['phone'], $r['email'], $r['city'], $r['note'],
-        !$isP && !empty($c['custom']) ? ($m['form_name'] ?? $m['name'] ?? '') . ' – по избор' : ($m['name'] ?? ''), $dims, $isP ? '' : (!empty($c['custom']) ? 'да' : 'не'),
-        $isP || $round ? '' : dec($m['w'] ?? null), $isP || $round ? '' : dec($m['d'] ?? null), $isP ? '' : dec($m['h'] ?? null), $isP || !$round ? '' : dec($m['w'] ?? null),
+        !empty($c['custom']) ? ($m['form_name'] ?? $m['name'] ?? '') . ' – по избор' : ($m['name'] ?? ''), $dims, empty($c['model']) ? '' : (!empty($c['custom']) ? 'да' : 'не'),
+        empty($c['model']) || $round ? '' : dec($m['w'] ?? null), empty($c['model']) || $round ? '' : dec($m['d'] ?? null), empty($c['model']) ? '' : dec($m['h'] ?? null), empty($c['model']) || !$round ? '' : dec($m['w'] ?? null),
         $o['material']['name'] ?? '', $o['legs']['name'] ?? '',
         $c['text'] ?? '', $c['text_length'] ?? '', ($c['text_length'] ?? 0) ? ($o['font']['name'] ?? '') : '', dec($c['letter_mm'] ?? null),
         ($c['decorated_walls'] ?? 0) ? ($o['sides']['name'] ?? '') : '', $o['ornament']['name'] ?? '',

@@ -80,7 +80,9 @@ admin_header('Запитвания', 'inquiries');
       <b><?= $r['name'] !== '' ? e($r['name']) : '<span class="muted">(изтрити лични данни)</span>' ?></b><?= $r['phone'] !== '' ? ' · ' . e($r['phone']) : '' ?><?= $r['city'] ? ' · ' . e($r['city']) : '' ?>
     </div>
     <div class="row-sub">
-      <?php if ($isProj): ?>
+      <?php if ($isProj && !empty($cfg['model'])): ?>
+        <?= e(($cfg['object'] ?? '') !== '' ? $cfg['object'] : 'Обект') ?> · <?= e(!empty($cfg['custom']) ? ($cfg['model']['form_name'] ?? $r['model_name'] ?? '') : ($r['model_name'] ?? ($cfg['model']['name'] ?? '—'))) ?> · <?= e($cfg['options']['material']['name'] ?? '—') ?><?= ($cfg['text'] ?? '') !== '' ? ' · „' . e($cfg['text']) . '“' : '' ?> · <?= (int)$r['quantity'] ?> бр.<?= $r['files'] ? ' · 📎 лого' : '' ?>
+      <?php elseif ($isProj): ?>
         <?= e(($cfg['object'] ?? '') !== '' ? $cfg['object'] : 'Обект') ?> · <?= (int)$r['quantity'] ?> бр. · <?= e(project_materials_short()[$cfg['material'] ?? ''] ?? '—') ?><?= $r['files'] ? ' · 📎 лого' : '' ?>
       <?php else: ?>
         <?= e(!empty($cfg['custom']) ? ($cfg['model']['form_name'] ?? $r['model_name'] ?? '') : ($r['model_name'] ?? ($cfg['model']['name'] ?? '—'))) ?><?= ($cfg['text'] ?? '') !== '' ? ' · „' . e($cfg['text']) . '“' : '' ?><?= $r['quantity'] > 1 ? ' · ' . (int)$r['quantity'] . ' бр.' : '' ?>

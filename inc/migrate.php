@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 function run_migrations(): void
 {
@@ -71,6 +71,11 @@ function run_migrations(): void
             // огнище на кръстата стойка: тава с наклонени стени върху две плочи, нов размер 80 см
             require_once __DIR__ . '/migrate_v9.php';
             migrate_v9();
+        }
+        if ($v < 10) {
+            // за хотели и обекти: формите от шоурума стават конфигурируеми, вид „по проект“ (цена по оферта)
+            require_once __DIR__ . '/migrate_v10.php';
+            migrate_v10();
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {

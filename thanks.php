@@ -35,7 +35,7 @@ page_header('Благодарим ви', ['body_class' => 'page-thanks']);
         <?php foreach ($lines as $k => $v): ?>
           <tr><th><?= e($k) ?></th><td><?= e($v) ?></td></tr>
         <?php endforeach; ?>
-        <?php if ($showPrices): ?>
+        <?php if ($showPrices && $inq['kind'] !== 'project'): /* при проект – цена по оферта */ ?>
           <tr><th>Ориентировъчна цена</th><td><strong><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></strong></td></tr>
         <?php endif; ?>
       </table>

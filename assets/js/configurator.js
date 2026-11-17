@@ -128,6 +128,8 @@
     // бележки за офертата: палет (за всеки модел над прага) и две части (размер по избор извън листа)
     res.pallet = res.weight.kg > SET.pallet_kg;
     res.sheet = m.custom ? G.sheetFit(m, SET, fm.construction) : { fits: true, part: '' };
+    if (m.project) { res.price = null; res.pallet = false; }
+    res.segments = G.benchSegments(m, SET);
     res.legCm = renderParam('legs', 'leg_cm', 0);
     res.finish = renderParam('material', 'finish', 'inox');
     return res;
@@ -154,7 +156,7 @@
     var o = {
       model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey, fonts: FONTS,
       pattern: r.pattern, perfDensity: r.perfDensity, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name,
-      textPlace: r.m.text_place, plateMm: parseFloat(renderParam('plate', 'plate_mm', 0)) || 0
+      textPlace: r.m.text_place, plateMm: parseFloat(renderParam('plate', 'plate_mm', 0)) || 0, segments: r.segments
     };
     for (var k in extra || {}) o[k] = extra[k];
     return o;
@@ -205,11 +207,18 @@
   function isSelected(o) {
     return groupsByCode[o.group] && groupsByCode[o.group].multi ? state.extras.indexOf(o.code) >= 0 : state.opts[o.group] === o.code;
   }
+  /** Моделът предлага ли опцията (изискване към опция, която моделът няма, не важи – напр. поставка за дърва без крачета) */
+  function offered(o) {
+    var m = model();
+    return !!m && m.options.some(function (mo) { return mo.id === o.id; });
+  }
+  /** Вид „по проект“ (обекти): цена по оферта, последната стъпка е проектната форма */
+  function isProject() { var m = model(); return !!(m && m.project); }
   /** Неизпълнено изискване на опцията (напр. термометър без капак) -> целевата опция, иначе null */
   function missingRequirement(o) {
     var miss = null;
     (CAT.rules || []).forEach(function (r) {
-      if (r.option === o.id && r.kind === 'requires' && CAT.options[r.target] && !isSelected(CAT.options[r.target])) miss = CAT.options[r.target];
+      if (r.option === o.id && r.kind === 'requires' && CAT.options[r.target] && offered(CAT.options[r.target]) && !isSelected(CAT.options[r.target])) miss = CAT.options[r.target];
     });
     return miss;
   }
@@ -277,7 +286,7 @@
 
     // 1. Вид
     if (CAT.types.length) {
-      html += stepHtml('st-type', 'Вид', '<div class="opts opts-2">' + CAT.types.map(function (t) {
+      html += stepHtml('st-type', 'Вид', '<div class="opts opts-2 opts-types">' + CAT.types.map(function (t) {
         return optCard('type', t.code, state.type === t.code, t.name, t.hint, 'opt-big');
       }).join('') + '</div>');
     }
@@ -320,11 +329,12 @@
       }).join('') + '</div>');
     }
     // 5. Надпис
-    var body = '<div class="field"><label for="txt">Вашият надпис <span class="muted">(по желание, на един или два реда)</span></label>' +
-      '<textarea id="txt" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="напр. СЕМЕЙСТВО ИВАНОВИ">' + esc(state.text) + '</textarea>' +
+    var body = '<div class="field"><label for="txt">' + (m.project ? 'Име на обекта' : 'Вашият надпис') + ' <span class="muted">(по желание, на един или два реда)</span></label>' +
+      '<textarea id="txt" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="' + (m.project ? 'напр. ХОТЕЛ ЕЛЕНА' : 'напр. СЕМЕЙСТВО ИВАНОВИ') + '">' + esc(state.text) + '</textarea>' +
       '<p class="txt-status" id="txtStatus" role="status" aria-live="polite"></p>' +
       '<div class="txt-actions"><button type="button" class="btn btn-sm btn-ghost" id="splitBtn" hidden>Раздели на два реда</button>' +
-      '<button type="button" class="btn btn-sm btn-ghost" id="narrowBtn" hidden>Пробвай с по-тесния шрифт</button></div></div>';
+      '<button type="button" class="btn btn-sm btn-ghost" id="narrowBtn" hidden>Пробвай с по-тесния шрифт</button></div>' +
+      (m.project ? '<p class="step-hint txt-logo-note">Ако имате лого, прикачете го в последната стъпка. В прегледа се показва името, а логото се поставя във финалния проект.</p>' : '') + '</div>';
     if (mo.font) {
       body += '<p class="sub">Шрифт</p><div class="opts opts-3 fonts">' + mo.font.map(function (x) {
         return '<label class="opt opt-font"><input type="radio" name="font" value="' + esc(x.opt.code) + '"' + (state.opts.font === x.opt.code ? ' checked' : '') +
@@ -366,6 +376,8 @@
     }
 
     stepsEl.innerHTML = html;
+    $('#st-send').hidden = !!m.project;
+    $('#st-project').hidden = !m.project;
     numberSteps();
     drawThumbs();
     updateText();
@@ -410,17 +422,21 @@
       specsEl.innerHTML = spec;
       // бележки под изгледа: палет и изработка от две части
       var flags = [];
-      if (r.pallet) flags.push('Доставката е с палет, цената се уточнява в офертата.');
-      if (!r.sheet.fits) flags.push('Този размер се изработва от две части, цената се уточнява в офертата.');
+      if (m.project) flags.push('Доставката и монтажът се уточняват в офертата.');
+      else if (r.pallet) flags.push('Доставката е с палет, цената се уточнява в офертата.');
+      if (!r.sheet.fits) flags.push('Този размер се изработва от две части' + (m.project ? '.' : ', цената се уточнява в офертата.'));
+      if (r.segments) flags.push('Пейката се изработва от ' + r.segments + ' сегмента. Седалката е от дърво и се уточнява по проект.');
       var fl = $('#cfgFlags');
       if (fl) { fl.hidden = !flags.length; fl.innerHTML = flags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join(''); }
       var priceTxt = r.price ? (r.price.min === r.price.max ? money(r.price.min) : money(r.price.min) + ' – ' + money(r.price.max)) + ' ' + SET.currency : '';
       $$('[data-price]').forEach(function (el) {
-        el.hidden = !r.price;
-        if (r.price) el.innerHTML = 'Ориентировъчно: <b>' + priceTxt + '</b>' + (state.qty > 1 ? ' <span class="muted">за ' + state.qty + ' бр.</span>' : '');
+        // вид „по проект“: цената никога не се показва (каталогът дори не я съдържа)
+        el.hidden = !r.price && !m.project;
+        if (m.project) el.innerHTML = '<b>Цена по оферта</b>';
+        else if (r.price) el.innerHTML = 'Ориентировъчно: <b>' + priceTxt + '</b>' + (state.qty > 1 ? ' <span class="muted">за ' + state.qty + ' бр.</span>' : '');
       });
       $('#barModel').textContent = m.custom ? (formOf(m) ? formOf(m).name : m.name) + ' · по избор' : m.name;
-      $('#barInfo').textContent = r.price ? priceTxt : '≈ ' + num(r.weight.kg) + ' кг';
+      $('#barInfo').textContent = m.project ? 'Цена по оферта' : r.price ? priceTxt : '≈ ' + num(r.weight.kg) + ' кг';
       updateTextUi(r);
       save();
     });
@@ -456,8 +472,12 @@
     input.setAttribute('aria-invalid', r.error ? 'true' : 'false');
     var sendBtn = $('#sendBtn');
     if (sendBtn) sendBtn.disabled = !!r.error || sending;
+    var projBtn = $('#projBtn');
+    if (projBtn) projBtn.disabled = !!r.error || pSending;
     var formErr = $('#textBlock');
     if (formErr) formErr.hidden = !r.error;
+    var formErrP = $('#textBlockP');
+    if (formErrP) formErrP.hidden = !r.error;
     // образците на шрифтовете показват надписа на клиента
     $$('.font-sample').forEach(function (s) {
       var t = r.text ? G.chars(r.lines[0]).slice(0, 8).join('') : 'Огън';
@@ -648,6 +668,7 @@
   var form = $('#inqForm');
   var qtyInput = $('#qty');
   var sending = false; // бутонът стои заключен, докато тече заявката
+  var pSending = false; // същото за проектната форма
 
   $$('[data-qty]').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -803,15 +824,131 @@
     });
   });
 
+  /* ---------- проектна форма (вид „по проект“): multipart към api/project.php с конфигурацията и прегледа ---------- */
+  var pform = $('#projForm');
+  var P_FIELDS = ['object', 'city', 'quantity', 'deadline', 'contact_name', 'phone', 'email', 'note'], STORE_PFORM = 'fp_pform_v1', pTimer = 0;
+  pform.addEventListener('input', function (e) {
+    if (P_FIELDS.indexOf(e.target.name) < 0) return;
+    clearTimeout(pTimer);
+    pTimer = setTimeout(function () {
+      var d = {};
+      P_FIELDS.forEach(function (n) { d[n] = String(pform.elements[n].value || '').slice(0, 3000); });
+      storeSet(STORE_PFORM, d);
+    }, 300);
+  });
+  (function restoreP() {
+    var d = storeGet(STORE_PFORM);
+    if (!d) return;
+    P_FIELDS.forEach(function (n) { if (typeof d[n] === 'string' && d[n] !== '') pform.elements[n].value = d[n]; });
+  })();
+  function pError(name, msg) {
+    var el = pform.querySelector('[data-err="' + name + '"]'), input = pform.elements[name];
+    if (el) { el.textContent = msg || ''; el.hidden = !msg; }
+    if (input && input.classList) { input.classList.toggle('invalid', !!msg); input.setAttribute('aria-invalid', msg ? 'true' : 'false'); }
+  }
+  var pLogo = pform.elements.logo, pLogoInfo = $('#logoInfo');
+  function checkLogo() {
+    var fl = pLogo.files && pLogo.files[0];
+    pLogoInfo.textContent = '';
+    if (!fl) { pError('logo', ''); return ''; }
+    var ext = (fl.name.split('.').pop() || '').toLowerCase(), err = '';
+    if (['png', 'jpg', 'jpeg', 'svg', 'pdf'].indexOf(ext) < 0) err = 'Позволени са само PNG, JPG, SVG и PDF.';
+    else if (fl.size > CFG.maxBytes) err = 'Файлът е ' + (fl.size / 1048576).toFixed(1).replace('.', ',') + ' MB. Максимумът е 5 MB.';
+    pError('logo', err);
+    if (!err) pLogoInfo.textContent = fl.name + ' · ' + (fl.size >= 1048576 ? (fl.size / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(fl.size / 1024)) + ' KB');
+    return err;
+  }
+  pLogo.addEventListener('change', checkLogo);
+  function validateP() {
+    var e = {}, v = function (n) { return String(pform.elements[n].value || '').trim(); };
+    if (v('object').length < 2) e.object = 'Напишете кой е обектът.';
+    var q = parseInt(v('quantity'), 10);
+    if (!(q >= 1 && q <= 500)) e.quantity = 'Брой между 1 и 500.';
+    if (v('contact_name').length < 2) e.contact_name = 'Въведете име.';
+    var digits = v('phone').replace(/\D/g, '');
+    if (!v('phone')) e.phone = 'Въведете телефон.';
+    else if (!/^[\d\s+()\-\/]+$/.test(v('phone')) || digits.length < 8 || digits.length > 15) e.phone = 'Проверете телефона – напр. 0888 123 456.';
+    if (!v('email')) e.email = 'Въведете имейл.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('email'))) e.email = 'Невалиден имейл.';
+    if (!pform.elements.consent.checked) e.consent = 'Нужно е съгласие, за да се свържем с вас.';
+    ['object', 'quantity', 'contact_name', 'phone', 'email', 'consent'].forEach(function (n) { pError(n, e[n]); });
+    var le = checkLogo();
+    if (le) e.logo = le;
+    return e;
+  }
+  function pPost(fd) {
+    return fetch(CFG.projectUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (res) { return res.json().catch(function () { return { ok: false, message: 'Сървърът върна неочакван отговор.' }; }); });
+  }
+  /** При изтекла сесия: нов токен и още един опит със същите данни (и същия файл) */
+  function pSend(fd, retried) {
+    return pPost(fd).then(function (data) {
+      if (data && data.code === 'csrf' && !retried) {
+        return postJson(CFG.tokenUrl, {}).then(function (t) {
+          if (!t || !t.csrf) return data;
+          CFG.csrf = t.csrf;
+          fd.set('csrf', t.csrf);
+          return pSend(fd, true);
+        }, function () { return data; });
+      }
+      return data;
+    });
+  }
+  pform.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (pSending) return;
+    var r = compute(), errs = validateP();
+    if (r.error) { scrollToStep($('#st-text')); return; }
+    if (Object.keys(errs).length) {
+      var first = pform.querySelector('.invalid');
+      if (first) first.focus();
+      return;
+    }
+    var btn = $('#projBtn'), msg = $('#projMsg');
+    pSending = true;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    msg.hidden = true;
+    function unlock() { pSending = false; btn.classList.remove('loading'); btn.disabled = !!compute().error; }
+    fontCss(r.fontKey).then(function (css) {
+      var svg = window.FPRender.render(renderOpts(r, { id: 'sn', fontCss: r.text ? css : '' }));
+      var fd = new FormData(pform);
+      var qty = parseInt(pform.elements.quantity.value, 10) || 1;
+      fd.set('csrf', CFG.csrf);
+      fd.set('config', JSON.stringify({ model: state.model, custom: state.custom, options: Object.assign({}, state.opts, { extras: state.extras }), text: state.text, quantity: qty }));
+      fd.set('svg', svg);
+      fd.set('src', JSON.stringify(src()));
+      return pSend(fd, false);
+    }).then(function (data) {
+      if (data && data.ok) {
+        storeClear();
+        try { localStorage.removeItem(STORE_PFORM); } catch (e) { /* */ }
+        window.location.href = data.redirect;
+        return;
+      }
+      unlock();
+      var es = (data && data.errors) || {};
+      Object.keys(es).forEach(function (k) { pError(k, es[k]); });
+      if (es.text) { var te = $('#txtStatus'); te.textContent = es.text; te.className = 'txt-status bad'; }
+      msg.textContent = (data && data.message) || 'Запитването не беше изпратено. Проверете полетата и опитайте отново.';
+      msg.hidden = false;
+    }).catch(function () {
+      unlock();
+      msg.textContent = 'Няма връзка със сървъра. Данните ви са запазени – опитайте отново.';
+      msg.hidden = false;
+    });
+  });
+
   /* ---------- долна лента на телефон ---------- */
-  var bar = $('#bar'), finalStep = $('#st-send'), stage = $('.cfg-stage');
+  var bar = $('#bar'), stage = $('.cfg-stage');
+  function finalStep() { return isProject() ? $('#st-project') : $('#st-send'); }
   function syncBar() {
-    bar.classList.toggle('hide', finalStep.getBoundingClientRect().top < window.innerHeight * 0.75);
+    bar.classList.toggle('hide', finalStep().getBoundingClientRect().top < window.innerHeight * 0.75);
   }
   window.addEventListener('scroll', syncBar, { passive: true });
   window.addEventListener('resize', syncBar);
   syncBar();
-  $('#barBtn').addEventListener('click', function () { scrollToStep(finalStep); });
+  $('#barBtn').addEventListener('click', function () { scrollToStep(finalStep()); });
 
   /** Скрол до стъпка, без заглавието да остане под залепения преглед */
   function scrollToStep(el) {

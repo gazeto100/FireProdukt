@@ -7,7 +7,7 @@
   function chars(t) { return Array.from(t); }
 
   /** Кръгли форми (Ø × височина) и пропорции на новите форми – огледало на inc/geometry.php */
-  var ROUND_SHAPES = ['hex', 'octagon', 'ringbowl', 'plancha'];
+  var ROUND_SHAPES = ['hex', 'octagon', 'ringbowl', 'plancha', 'bowl', 'ringbench'];
   var PROP = { planchaBase: 0.62, planchaHole: 0.45, planchaPanelH: 0.85, planchaChord: 0.7, bbqLid: 0.6, crossTray: 0.3, crossStand: 0.8 };
   /** Огнище на кръстата стойка – детайли в мм (огледало на cross_parts() в PHP) */
   function crossParts(W, H) {
@@ -16,6 +16,31 @@
     var rise = t > 0 ? over * Ht / t : 0, Hb = H - Ht, slant = Math.sqrt(Ht * Ht + t * t);
     return { Ht: Ht, t: t, B: B, Ws: Ws, Hb: Hb, rise: rise, plateH: Hb + rise, slant: slant,
       tray_mm2: B * B + 4 * (W + B) / 2 * slant, plates_mm2: 2 * (Ws * Hb + over * rise) };
+  }
+  /** Форми за обекти – детайли в мм (огледало на obj_parts() в PHP) */
+  var OBJ_CHORD = 0.62, BENCH_SEAT = 330;
+  function objParts(shape, W, D, H) {
+    if (shape === 'bowl') {
+      var R = W / 2, Hb = Math.min(0.6 * R, 0.6 * H), Hc = 0.45 * Hb;
+      return { R: R, Hb: Hb, Hp: H - Hb, Hc: Hc, chord: W * OBJ_CHORD,
+        mm2: Math.PI * R * R * 1.15 + Math.PI * W * Hc + 2 * Math.PI * 0.2 * R * (H - Hb) + Math.PI * Math.pow(0.42 * R, 2) };
+    }
+    if (shape === 'ringbench') {
+      var Ro = W / 2, Ri = Math.max(0.5 * Ro, Ro - BENCH_SEAT), Rp = Math.min(430, 0.45 * Ri);
+      return { Ro: Ro, Ri: Ri, Rp: Rp, Hb: H, Hpit: 1.4 * H, chord: 2 * Rp * OBJ_CHORD,
+        mm2: 2 * Math.PI * (Ro + Ri) * H + 2 * Math.PI * Rp * 1.4 * H + Math.PI * Rp * Rp };
+    }
+    if (shape === 'firetable') {
+      var r = 0.36 * Math.min(W, D);
+      return { r: r, mm2: 2 * (W + D) * H + W * D - Math.PI * r * r + Math.PI * r * r * 1.3 };
+    }
+    if (shape === 'column') return { mm2: 4 * W * H + 2 * W * W };
+    return {};
+  }
+  /** Огнище с пейка-пръстен: брой сегменти на пейката (огледало на bench_segments()) */
+  function benchSegments(m, S) {
+    if (m.shape !== 'ringbench') return 0;
+    return Math.max(1, Math.ceil(Math.PI * m.w * 10 / Math.max(S.sheet_w_mm, S.sheet_h_mm)));
   }
   function isRound(shape) { return ROUND_SHAPES.indexOf(shape) >= 0; }
 
@@ -56,6 +81,8 @@
     }
     if (m.shape === 'cross') { var cp = crossParts(m.w * 10, h); return [0, 1, 2, 3].map(function () { return [cp.B, cp.Ht]; }); }
     if (m.shape === 'ringbowl') return [[m.w * 10 * 0.72 * 0.62, h * 0.55]];
+    if (m.shape === 'bowl') { var bp = objParts('bowl', m.w * 10, m.d * 10, h); return [[bp.chord, bp.Hc]]; }
+    if (m.shape === 'ringbench') { var rp = objParts('ringbench', m.w * 10, m.d * 10, h); return [[rp.chord, rp.Hpit]]; }
     if (m.shape === 'suitcase' || (m.shape === 'bbq' && m.text_place === 'lid')) return [[m.w * 10, m.d * 10]];
     if (m.shape === 'plancha') return [[m.w * 10 * PROP.planchaBase * PROP.planchaChord, h * PROP.planchaPanelH]];
     if (m.shape === 'plancha_sq') return [[m.w * 10 * PROP.planchaBase, h * PROP.planchaPanelH]];
@@ -152,6 +179,7 @@
     if (m.shape === 'trapezoid') { var t = 0.22 * h; return (w * w + 4 * (w + t) * Math.sqrt(h * h + t * t)) / 10000; }
     if (m.shape === 'pedestal') { var rp = 0.45 * w; return (4 * w * h + w * d + Math.PI * rp * rp * 1.25) / 10000; }
     if (m.shape === 'cross') { var cq = crossParts(w * 10, h * 10); return (cq.tray_mm2 + cq.plates_mm2) / 1000000; }
+    if (['bowl', 'ringbench', 'firetable', 'column'].indexOf(m.shape) >= 0) return objParts(m.shape, w * 10, d * 10, h * 10).mm2 / 1000000;
     if (m.shape === 'ringbowl') return (Math.PI * r * r * 1.3 + Math.PI * 0.72 * w * 0.55 * h) / 10000;
     if (m.shape === 'suitcase') return (w * d + 2 * (w + d) * h + w * d + 2 * (w + d) * 2 + 400) / 10000;
     if (m.shape === 'bbq') return (w * d + 2 * (w + d) * h + w * d + 2 * (w + d) * PROP.bbqLid * h + 2400) / 10000;
@@ -247,6 +275,18 @@
       parts.push([w, cx.slant, 'стена на тавата ' + mm(w) + '×' + mm(cx.slant) + ' мм']);
       parts.push([cx.B, cx.B, 'дъно на тавата ' + mm(cx.B) + '×' + mm(cx.B) + ' мм']);
       parts.push([cx.Ws, cx.plateH, 'плоча на стойката ' + mm(cx.Ws) + '×' + mm(cx.plateH) + ' мм']);
+    } else if (m.shape === 'bowl') {
+      parts.push([w, w, 'заготовка на купата Ø' + mm(w) + ' мм']);
+    } else if (m.shape === 'ringbench') {
+      var rb = objParts('ringbench', w, d, h), rpc = 2 * Math.PI * rb.Rp;
+      if (rpc > L) return { fits: false, part: 'огнище с обиколка ' + mm(rpc) + ' мм (листът е ' + mm(L) + ' мм)' };
+      parts.push([rpc, rb.Hpit, 'стена на огнището ' + mm(rpc) + '×' + mm(rb.Hpit) + ' мм']);
+    } else if (m.shape === 'firetable') {
+      parts.push([w, h, 'стена ' + mm(w) + '×' + mm(h) + ' мм']);
+      parts.push([d, h, 'стена ' + mm(d) + '×' + mm(h) + ' мм']);
+      parts.push([w, d, 'плот ' + mm(w) + '×' + mm(d) + ' мм']);
+    } else if (m.shape === 'column') {
+      parts.push([w, h, 'стена ' + mm(w) + '×' + mm(h) + ' мм']);
     } else if (m.shape === 'plancha') {
       var pc = Math.PI * PROP.planchaBase * w;
       if (pc > L) return { fits: false, part: 'основа с обиколка ' + mm(pc) + ' мм (листът е ' + mm(L) + ' мм)' };
@@ -299,6 +339,8 @@
     ROUND_SHAPES: ROUND_SHAPES,
     PROP: PROP,
     crossParts: crossParts,
+    objParts: objParts,
+    benchSegments: benchSegments,
     isRound: isRound,
     plateArea: plateArea,
     clampCustom: clampCustom,

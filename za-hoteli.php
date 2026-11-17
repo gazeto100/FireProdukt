@@ -3,7 +3,10 @@ declare(strict_types=1);
 require __DIR__ . '/inc/bootstrap.php';
 start_session();
 $_SESSION['form_t'] = time();
-$items = showcase_items();
+// моделите за обекти са формите от вид „по проект“ (в базата, редактират се от админа)
+$cat = public_catalog();
+$pforms = project_forms($cat);
+$byCode = array_column($cat['models'], null, 'code');
 
 page_header('За хотели и къщи за гости', [
     'body_class' => 'page-projects',
@@ -40,25 +43,29 @@ page_header('За хотели и къщи за гости', [
 
   <section class="wrap gallery-sec">
     <h2 class="sec-title">Модели за обекти</h2>
-    <p class="sec-sub">Примери – всеки модел се изработва в размер и материал по ваш избор.</p>
+    <p class="sec-sub">Сглобете модела в конфигуратора – размер, материал, името на обекта и екстри. Цената е по оферта.</p>
     <div class="gallery gallery-big">
-      <?php foreach ($items as $it): ?>
-        <article class="g-card g-static" data-showcase="<?= e($it['code']) ?>">
+      <?php foreach ($pforms as $fm):
+          $ms = array_values(array_filter(array_map(fn($c) => $byCode[$c] ?? null, $fm['models'])));
+          $ws = array_column($ms, 'w'); $pre = shape_is_round($fm['shape']) ? 'Ø' : '';
+          $range = min($ws) == max($ws) ? $pre . fmt_num(min($ws)) . ' см' : 'от ' . $pre . fmt_num(min($ws)) . ' до ' . $pre . fmt_num(max($ws)) . ' см';
+          if ($fm['custom']) $range .= ' или по мярка'; ?>
+        <a class="g-card g-form g-proj" href="<?= e(url('configurator.php?form=' . rawurlencode($fm['code']))) ?>" data-model="<?= e($ms[0]['code']) ?>" data-text="ХОТЕЛ">
           <span class="g-img"></span>
           <span class="g-txt">
-            <b><?= e($it['name']) ?></b>
-            <small><?= e($it['dims']) ?> · <?= e(project_materials_short()[$it['finish']]) ?></small>
-            <span class="g-desc"><?= e($it['desc']) ?></span>
-            <?php if (!empty($it['note'])): ?><span class="g-note"><?= e($it['note']) ?></span><?php endif; ?>
+            <b><?= e($fm['name']) ?></b>
+            <small><?= e($range) ?> · инокс, черна стомана или кортен</small>
+            <?php if (!empty($fm['description'])): ?><span class="g-desc"><?= e($fm['description']) ?></span><?php endif; ?>
+            <span class="btn btn-sm g-btn">Сглоби</span>
           </span>
-        </article>
+        </a>
       <?php endforeach; ?>
     </div>
   </section>
 
   <section class="wrap project-form-sec" id="project-form">
     <h2 class="sec-title">Запитване по проект</h2>
-    <p class="sec-sub">Опишете обекта – ще ви се обадим до 1 работен ден и ще подготвим предложение с проект.</p>
+    <p class="sec-sub">Искате нещо извън моделите? Опишете обекта – ще ви се обадим до 1 работен ден и ще подготвим предложение с проект.</p>
     <form id="projForm" class="card-form" novalidate enctype="multipart/form-data">
       <div class="two-col">
         <div class="field">
@@ -97,8 +104,8 @@ page_header('За хотели и къщи за гости', [
       <fieldset class="field">
         <legend>Интересуват ме <span class="muted">(по желание)</span></legend>
         <div class="chips">
-          <?php foreach ($items as $it): ?>
-            <label class="chip"><input type="checkbox" name="interests[]" value="<?= e($it['code']) ?>"><span><?= e($it['name']) ?></span></label>
+          <?php foreach ($pforms as $fm): ?>
+            <label class="chip"><input type="checkbox" name="interests[]" value="<?= e($fm['code']) ?>"><span><?= e($fm['name']) ?></span></label>
           <?php endforeach; ?>
         </div>
       </fieldset>
@@ -148,14 +155,12 @@ page_header('За хотели и къщи за гости', [
   </section>
 </main>
 <script>
-window.FP_SHOWCASE = <?= json_encode($items, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+window.FP_CATALOG = <?= json_encode($cat, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS) ?>;
 window.FP_PCFG = <?= json_encode([
     'csrf' => csrf_token(),
     'url' => url('api/project.php'),
     'tokenUrl' => url('api/token.php'),
     'maxBytes' => UPLOAD_MAX_BYTES,
-    'layout' => geometry_layout(),
-    'fonts' => font_metrics(),
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 </script>
-<?php page_footer(['scripts' => ['js/geometry.js', 'js/render.js', 'js/projects.js']]); ?>
+<?php page_footer(['scripts' => ['js/geometry.js', 'js/render.js', 'js/home.js', 'js/projects.js']]); ?>

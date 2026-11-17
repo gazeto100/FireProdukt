@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
-// Запитване по проект (страница „За хотели и къщи за гости“), multipart/form-data с незадължително лого.
+// Запитване по проект, multipart/form-data с незадължително лого:
+// - кратката форма на страницата „За хотели и къщи за гости“ (без конфигурация);
+// - последната стъпка на конфигуратора при вид „по проект“ (поле config + преглед svg; имейлът е задължителен).
 require dirname(__DIR__) . '/inc/bootstrap.php';
 start_session();
 
@@ -44,10 +46,25 @@ $material = (string)($_POST['material'] ?? '');
 $deadline = (string)($_POST['deadline'] ?? '');
 $consent = !empty($_POST['consent']);
 
+// конфигурация от конфигуратора (вид „по проект“) – проверява се изцяло спрямо базата
+$cfgIn = json_decode((string)($_POST['config'] ?? ''), true);
+$configured = is_array($cfgIn);
+$cat = load_catalog(true);
+$v = null;
 $errors = [];
+if ($configured) {
+    $v = validate_config(array_merge($cfgIn, ['quantity' => $qty === false ? 1 : (int)$qty]), $cat);
+    foreach ($v['errors'] as $k => $msg) {
+        $errors[$k === 'quantity' ? 'quantity' : $k] = $msg;
+    }
+    if ($v['config'] && empty($v['model']['project'])) {
+        $errors['model'] = 'Тази форма се поръчва с обикновеното запитване.';
+    }
+    if ($email === '') $errors['email'] = 'Въведете имейл.';
+}
 if (mb_strlen($object) < 2) $errors['object'] = 'Напишете кой е обектът.';
 if ($qty === false) $errors['quantity'] = 'Брой между 1 и 500.';
-if (!isset(project_materials()[$material])) $errors['material'] = 'Изберете материал.';
+if (!$configured && !isset(project_materials()[$material])) $errors['material'] = 'Изберете материал.';
 if (!isset(project_deadlines()[$deadline])) $deadline = 'flex';
 if (mb_strlen($name) < 2) $errors['contact_name'] = 'Въведете име.';
 $digits = preg_replace('/\D/', '', $phone);
@@ -56,8 +73,9 @@ elseif (!preg_match('/^[\d\s+()\-\/]+$/', $phone) || strlen($digits) < 8 || strl
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Невалиден имейл.';
 if (!$consent) $errors['consent'] = 'Нужно е съгласие, за да се свържем с вас.';
 
+// „Интересуват ме“ (кратката форма): формите от вид „по проект“
 $interests = [];
-$byCode = array_column(showcase_items(), null, 'code');
+$byCode = array_column(project_forms($cat), null, 'code');
 foreach ((array)($_POST['interests'] ?? []) as $c) {
     if (is_string($c) && isset($byCode[$c])) $interests[$c] = ['code' => $c, 'name' => $byCode[$c]['name']];
 }
@@ -69,15 +87,21 @@ if ($errors) {
     json_out(['ok' => false, 'errors' => $errors, 'message' => reset($errors)], 422);
 }
 
-$config = [
-    'kind' => 'project',
-    'object' => $object,
-    'quantity' => (int)$qty,
-    'material' => $material,
-    'deadline' => $deadline,
-    'interests' => array_values($interests),
-    'logo' => empty($logo['none']) ? $logo['name'] . ' (' . strtoupper($logo['ext']) . ', ' . fmt_bytes($logo['size']) . ')' : '',
-];
+$logoTxt = empty($logo['none']) ? $logo['name'] . ' (' . strtoupper($logo['ext']) . ', ' . fmt_bytes($logo['size']) . ')' : '';
+if ($configured) {
+    // пълната конфигурация + полетата от проектната форма
+    $config = array_merge($v['config'], ['kind' => 'project', 'object' => $object, 'deadline' => $deadline, 'logo' => $logoTxt]);
+} else {
+    $config = [
+        'kind' => 'project',
+        'object' => $object,
+        'quantity' => (int)$qty,
+        'material' => $material,
+        'deadline' => $deadline,
+        'interests' => array_values($interests),
+        'logo' => $logoTxt,
+    ];
+}
 $configJson = json_encode($config, JSON_UNESCAPED_UNICODE);
 
 // повторно изпращане: същият телефон + същото описание до 2 минути
@@ -102,6 +126,12 @@ if (empty($logo['none'])) {
     }
 }
 
+$svg = $configured ? svg_sanitize(mb_substr((string)($_POST['svg'] ?? ''), 0, 600000)) : null;
+$modelId = $configured ? $v['model']['id'] : null;
+// ориентировъчната цена се пази само за админа (при вид „по проект“ не се показва на клиента)
+$pMin = $configured && $v['price'] ? $v['price']['min'] : null;
+$pMax = $configured && $v['price'] ? $v['price']['max'] : null;
+$wKg = $configured ? $config['weight_kg'] : null;
 $src = json_decode((string)($_POST['src'] ?? '{}'), true);
 $src = is_array($src) ? $src : [];
 $s = fn($k, $len = 190) => isset($src[$k]) && is_string($src[$k]) && $src[$k] !== '' ? mb_substr($src[$k], 0, $len) : null;
@@ -110,8 +140,8 @@ try {
     db()->prepare("INSERT INTO inquiries
       (public_code, kind, name, phone, email, city, note, consent_at, model_id, quantity, config_json, svg, price_min, price_max, weight_kg,
        utm_source, utm_medium, utm_campaign, utm_term, utm_content, referrer, landing_url, ip_hash, user_agent)
-      VALUES (?, 'project', ?, ?, ?, ?, ?, NOW(), NULL, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        ->execute([$code, $name, $phone, $email ?: null, $city ?: null, $note ?: null, (int)$qty, $configJson,
+      VALUES (?, 'project', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        ->execute([$code, $name, $phone, $email ?: null, $city ?: null, $note ?: null, $modelId, (int)$qty, $configJson, $svg, $pMin, $pMax, $wKg,
             $s('utm_source'), $s('utm_medium'), $s('utm_campaign'), $s('utm_term'), $s('utm_content'), $s('referrer', 500), $s('landing', 500),
             $ipHash, mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
     $id = (int)db()->lastInsertId();
@@ -125,7 +155,7 @@ try {
     throw $e;
 }
 db()->query('SELECT RELEASE_LOCK(' . db()->quote('fp_inq_' . $phoneKey) . ')');
-record_event('lead', null);
+record_event('lead', $modelId);
 $_SESSION['last_inquiry'] = $code;
 session_write_close();
 
@@ -145,12 +175,13 @@ if (function_exists('fastcgi_finish_request')) {
 // Имейли
 try {
     $site = setting('site_name', 'FireProdukt');
-    $lines = project_lines($config);
+    $lines = config_lines($config, $cat);
     $contact = ['Лице за контакт' => $name, 'Телефон' => $phone, 'Имейл' => $email ?: '—', 'Населено място' => $city ?: '—', 'Бележка' => $note ?: '—'];
     $notify = setting('notify_email', '');
     if ($notify !== '') {
         $t = "Ново запитване по ПРОЕКТ $code\n\n";
         foreach (array_merge($contact, $lines) as $k => $v) $t .= "$k: $v\n";
+        if ($pMin !== null) $t .= "\nОриентировъчна цена: " . price_range_text((float)$pMin, (float)$pMax) . " (не се показва на клиента)\n";
         $t .= "\nИзточник: " . ($s('utm_source') ?: '—') . ' / ' . ($s('utm_medium') ?: '—') . ' / ' . ($s('utm_campaign') ?: '—') . "\n";
         $t .= "\nДетайли: " . abs_url('admin/inquiry.php?id=' . $id) . "\n";
         $rows = '';
@@ -160,6 +191,7 @@ try {
         $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222"><h2 style="margin:0 0 12px">Запитване по проект ' . e($code) . '</h2>'
             . '<table style="border-collapse:collapse">' . $rows . '</table><p><a href="' . e(abs_url('admin/inquiry.php?id=' . $id)) . '">Отвори в админ панела</a></p></div>';
         $att = [];
+        if ($svg) $att[] = ['name' => 'preview-' . $code . '.svg', 'type' => 'image/svg+xml', 'data' => $svg];
         if ($stored && ($pth = upload_path($stored))) {
             $att[] = ['name' => 'logo-' . $code . '.' . $logo['ext'], 'type' => 'application/octet-stream', 'data' => (string)file_get_contents($pth)];
         }

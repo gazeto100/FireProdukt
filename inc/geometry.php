@@ -10,7 +10,7 @@ const TEXT_MAX_CHARS = 40;   // технически таван срещу зл�
 const TEXT_MAX_LINES = 2;
 
 /** Кръгли форми: размерът е диаметър (Ø) × височина. Огледало на ROUND_SHAPES в geometry.js */
-const ROUND_SHAPES = ['hex', 'octagon', 'ringbowl', 'plancha'];
+const ROUND_SHAPES = ['hex', 'octagon', 'ringbowl', 'plancha', 'bowl', 'ringbench'];
 
 /**
  * Пропорции на новите форми (етап 4) – огледало в geometry.js и render.js:
@@ -48,6 +48,52 @@ function cross_parts(float $W, float $H): array
         'plates_mm2' => 2 * ($Ws * $Hb + $over * $rise)];
 }
 
+/**
+ * Форми за обекти (v10) – размери на детайлите в мм. Огледало на objParts() в geometry.js и на рендера.
+ * bowl (Ø D × обща височина H): купа с дълбочина Hb = min(0,6·R; 0,6·H) на крак Hp = H − Hb; вертикален пояс
+ *   по ръба Hc = 0,45·Hb – в него е надписът (видим плосък участък 0,62·D);
+ * ringbench (Ø D, височина на пейката H): пейка с ширина 33 см, огнище в средата Ø 2·Rp (Rp = min(43 см; 0,45·Ri)),
+ *   1,4 × височината на пейката; надписът е в горната част на огнището (над пейката). Седалката е от дърво – не влиза в теглото и листа;
+ * firetable (w × d × h): кутия, плот с отвор r = 0,36·min(w, d), огнена купа в отвора;
+ * column (w × w × h): колона с огън горе; надписът е в горната част, орнаментът – под него.
+ */
+const OBJ_CHORD = 0.62;
+const BENCH_SEAT = 330;
+
+function obj_parts(string $shape, float $W, float $D, float $H): array
+{
+    switch ($shape) {
+        case 'bowl':
+            $R = $W / 2;
+            $Hb = min(0.6 * $R, 0.6 * $H);
+            $Hc = 0.45 * $Hb;
+            return ['R' => $R, 'Hb' => $Hb, 'Hp' => $H - $Hb, 'Hc' => $Hc, 'chord' => $W * OBJ_CHORD,
+                'mm2' => M_PI * $R * $R * 1.15 + M_PI * $W * $Hc + 2 * M_PI * 0.2 * $R * ($H - $Hb) + M_PI * (0.42 * $R) ** 2];
+        case 'ringbench':
+            $Ro = $W / 2;
+            $Ri = max(0.5 * $Ro, $Ro - BENCH_SEAT);
+            $Rp = min(430.0, 0.45 * $Ri);
+            $Hpit = 1.4 * $H;
+            return ['Ro' => $Ro, 'Ri' => $Ri, 'Rp' => $Rp, 'Hb' => $H, 'Hpit' => $Hpit, 'chord' => 2 * $Rp * OBJ_CHORD,
+                // само металните части: двете стени на пейката и огнището (стена и дъно)
+                'mm2' => 2 * M_PI * ($Ro + $Ri) * $H + 2 * M_PI * $Rp * $Hpit + M_PI * $Rp * $Rp];
+        case 'firetable':
+            $r = 0.36 * min($W, $D);
+            return ['r' => $r, 'mm2' => 2 * ($W + $D) * $H + $W * $D - M_PI * $r * $r + M_PI * $r * $r * 1.3];
+        case 'column':
+            return ['mm2' => 4 * $W * $H + 2 * $W * $W];
+    }
+    return [];
+}
+
+/** Огнище с пейка-пръстен: от колко сегмента е пейката (обиколката не се побира в един лист) */
+function bench_segments(array $m): int
+{
+    if (($m['shape'] ?? '') !== 'ringbench') return 0;
+    $L = max((float)setting('sheet_w_mm', '2970'), (float)setting('sheet_h_mm', '1470'));
+    return max(1, (int)ceil(M_PI * $m['w'] * 10 / $L));
+}
+
 function shape_is_round(string $shape): bool
 {
     return in_array($shape, ROUND_SHAPES, true);
@@ -63,7 +109,11 @@ function geometry_layout(): array
         'band_orn' => [0.10, 0.42],       // зона за орнамента
         'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
         // форми със собствена зона за надписа: постамент – над отвора за дърва; огнище с плоча – горната част на основата, под плочата
-        'shape_bands' => ['pedestal' => [0.08, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50]],
+        'shape_bands' => ['pedestal' => [0.08, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50],
+            // купа – целият пояс по ръба; колона – горната част (орнаментът е под надписа)
+            'bowl' => [0.12, 0.88], 'column' => [0.07, 0.30], 'ringbench' => [0.08, 0.45]],
+        // форми със собствена зона за орнамента
+        'shape_orn' => ['column' => [0.36, 0.93]],
         'max_chars' => TEXT_MAX_CHARS,
         'max_lines' => TEXT_MAX_LINES,
     ];
@@ -135,6 +185,12 @@ function model_walls(array $m): array
             // надписът е на предната наклонена стена на тавата – като при трапецовидното огнище: най-тясната (долна) ширина × дълбочината
             $cp = cross_parts($m['w'] * 10, $h);
             return array_fill(0, 4, [$cp['B'], $cp['Ht']]);
+        case 'bowl':
+            $bp = obj_parts('bowl', $m['w'] * 10, $m['d'] * 10, $h);
+            return [[$bp['chord'], $bp['Hc']]];
+        case 'ringbench':
+            $rp = obj_parts('ringbench', $m['w'] * 10, $m['d'] * 10, $h);
+            return [[$rp['chord'], $rp['Hpit']]];
         case 'ringbowl':
             // пръстенът под купата: Ø = 0,72·Ø купа, височина = 0,55·общата; надписът е в предната му част
             return [[$m['w'] * 10 * 0.72 * 0.62, $h * 0.55]];
@@ -291,6 +347,11 @@ function sheet_area_m2(array $m): float
             // тава + две плочи на стойката
             $cp = cross_parts($w * 10, $h * 10);
             return ($cp['tray_mm2'] + $cp['plates_mm2']) / 1000000;
+        case 'bowl':
+        case 'ringbench':
+        case 'firetable':
+        case 'column':
+            return obj_parts($m['shape'], $w * 10, $d * 10, $h * 10)['mm2'] / 1000000;
         case 'ringbowl':
             $r = $w / 2;
             return (M_PI * $r * $r * 1.3 + M_PI * 0.72 * $w * 0.55 * $h) / 10000;
@@ -409,6 +470,25 @@ function sheet_fit(array $m, string $construction = 'panels'): array
             $parts[] = [$w, $cp['slant'], 'стена на тавата ' . $mm($w) . '×' . $mm($cp['slant']) . ' мм'];
             $parts[] = [$cp['B'], $cp['B'], 'дъно на тавата ' . $mm($cp['B']) . '×' . $mm($cp['B']) . ' мм'];
             $parts[] = [$cp['Ws'], $cp['plateH'], 'плоча на стойката ' . $mm($cp['Ws']) . '×' . $mm($cp['plateH']) . ' мм'];
+            break;
+        case 'bowl':
+            // купата се изтегля от кръгла заготовка Ø; поясът по ръба е от сегменти (заварени)
+            $parts[] = [$w, $w, 'заготовка на купата Ø' . $mm($w) . ' мм'];
+            break;
+        case 'ringbench':
+            // пейката е от сегменти (bench_segments); огнището в средата – валцувано, по обиколката
+            $rb = obj_parts('ringbench', $w, $d, $h);
+            $pc = 2 * M_PI * $rb['Rp'];
+            if ($pc > $L) return ['fits' => false, 'part' => 'огнище с обиколка ' . $mm($pc) . ' мм (листът е ' . $mm($L) . ' мм)'];
+            $parts[] = [$pc, $rb['Hpit'], 'стена на огнището ' . $mm($pc) . '×' . $mm($rb['Hpit']) . ' мм'];
+            break;
+        case 'firetable':
+            $parts[] = [$w, $h, 'стена ' . $mm($w) . '×' . $mm($h) . ' мм'];
+            $parts[] = [$d, $h, 'стена ' . $mm($d) . '×' . $mm($h) . ' мм'];
+            $parts[] = [$w, $d, 'плот ' . $mm($w) . '×' . $mm($d) . ' мм'];
+            break;
+        case 'column':
+            $parts[] = [$w, $h, 'стена ' . $mm($w) . '×' . $mm($h) . ' мм'];
             break;
         case 'plancha':
             // кръгла основа – валцувана, по обиколката; плочата – кръг Ø

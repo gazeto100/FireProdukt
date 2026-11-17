@@ -48,7 +48,8 @@ page_header('', [
   <section class="wrap gallery-sec" id="models">
     <h2 class="sec-title">Модели</h2>
     <p class="sec-sub">Изберете форма – размера, материала, надписа и екстрите добавяте в конфигуратора.</p>
-    <?php foreach ($cat['types'] as $t): $forms = array_values(array_filter($cat['forms'], fn($f) => $f['type'] === $t['code'])); if (!$forms) continue; ?>
+    <?php foreach ($cat['types'] as $t): if (!empty($t['is_project'])) continue; /* обектите са на страницата „За хотели“ */
+        $forms = array_values(array_filter($cat['forms'], fn($f) => $f['type'] === $t['code'])); if (!$forms) continue; ?>
       <h3 class="group-title"><?= e($groupTitles[$t['code']] ?? $t['name']) ?></h3>
       <div class="gallery gallery-forms">
         <?php foreach ($forms as $fm):

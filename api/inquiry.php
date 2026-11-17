@@ -59,6 +59,10 @@ $v = validate_config(is_array($in['config'] ?? null) ? $in['config'] : [], $cat)
 foreach ($v['errors'] as $k => $msg) {
     $errors[$k] = $msg;
 }
+// формите от вид „по проект“ се изпращат с проектната форма (api/project.php)
+if (!empty($v['model']['project'])) {
+    $errors['model'] = 'Тази форма се поръчва с проектната форма.';
+}
 if ($errors) {
     $first = reset($errors);
     json_out(['ok' => false, 'errors' => $errors, 'message' => $first], 422);

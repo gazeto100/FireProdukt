@@ -186,7 +186,7 @@
       var perfH = o.model && o.model.shape === 'pedestal' ? H * 0.52 - edge : H - 2 * edge;
       holes += '<path d="' + perfPath(edge, edge, W - 2 * edge, perfH, o.perfDensity, excl) + '"/>';
     } else if (o.pattern && PATTERNS[o.pattern]) {
-      var ob = L.band_orn, oTop = Math.max(ob[0] * H, edge), oBot = Math.min(ob[1] * H, H - edge);
+      var ob = (L.shape_orn && o.model && L.shape_orn[o.model.shape]) || L.band_orn, oTop = Math.max(ob[0] * H, edge), oBot = Math.min(ob[1] * H, H - edge);
       if (oBot > oTop + 10) holes += '<path d="' + PATTERNS[o.pattern](edge, oTop, W - 2 * edge, oBot - oTop) + '"/>';
     }
     var fit = o.fit;
@@ -539,6 +539,49 @@
     return s;
   }
 
+  /* ---------- Обекти (v10): искрогасител, кръгъл капак, поставка за дърва отстрани ---------- */
+  function meshPattern(pid) {
+    return '<pattern id="' + pid + '" patternUnits="userSpaceOnUse" width="16" height="16" patternTransform="rotate(45)">' +
+      '<path d="M0 0H16M0 0V16" stroke="#d6dadf" stroke-width="1.8" stroke-opacity=".75"/></pattern>';
+  }
+  /** Искрогасител: мрежест купол над кръгъл отвор (cx, cz, r) на височина top; моделът на мрежата е вграден */
+  function sparkDome(id, cx, cz, r, top) {
+    var L0 = P(cx + r * Math.cos(TH0 + Math.PI), top, cz + r * Math.sin(TH0 + Math.PI)), R0 = P(cx + r * Math.cos(TH0), top, cz + r * Math.sin(TH0));
+    var dh = r * 1.05, front = circ(cx, cz, r, top, FRONT[0], FRONT[1], 40).reverse();
+    var dome = 'M' + f(L0[0]) + ',' + f(L0[1]) + 'C' + f(L0[0]) + ',' + f(L0[1] - dh * 1.3) + ' ' + f(R0[0]) + ',' + f(R0[1] - dh * 1.3) + ' ' + f(R0[0]) + ',' + f(R0[1]) +
+      'L' + front.map(function (p) { return f(p[0]) + ',' + f(p[1]); }).join('L') + 'Z';
+    var tk = P(cx, top + dh * 0.98, cz), pid = id + 'mesh';
+    return '<defs>' + meshPattern(pid) + '</defs><path d="' + dome + '" fill="url(#' + pid + ')" stroke="#c4c9ce" stroke-width="5"/>' +
+      '<path d="M' + f(tk[0] - 26) + ',' + f(tk[1]) + 'q26,-34 52,0" fill="none" stroke="#9aa0a7" stroke-width="8" stroke-linecap="round"/>';
+  }
+  /** Кръгъл капак (плосък диск с борд и дръжка) върху отвор */
+  function roundLid(id, pal, cx, cz, r, y) {
+    var t = 24, s = '';
+    s += poly(circ(cx, cz, r, y + t, FRONT[0], FRONT[1]).concat(circ(cx, cz, r, y, FRONT[0], FRONT[1]).reverse()), 'fill="url(#' + id + 'side)"');
+    s += poly(circ(cx, cz, r, y + t, 0, 2 * Math.PI, 64), 'fill="url(#' + id + 'top)" stroke="' + pal.rim + '" stroke-width="4"');
+    var hw = Math.min(90, r * 0.3), h1 = P(cx - hw, y + t, cz), h2 = P(cx + hw, y + t, cz);
+    s += '<path d="M' + f(h1[0]) + ',' + f(h1[1]) + 'C' + f(h1[0]) + ',' + f(h1[1] - 60) + ' ' + f(h2[0]) + ',' + f(h2[1] - 60) + ' ' + f(h2[0]) + ',' + f(h2[1]) + '" fill="none" stroke="#3b3f44" stroke-width="12" stroke-linecap="round"/>';
+    return s;
+  }
+  /** Поставка за дърва отстрани: рамка от лента с наредени цепеници; дясната ѝ стойка е на xRight */
+  function logRackSide(id, pal, xRight, cz, W) {
+    var x0 = xRight - W, z0 = cz - 140, z1 = cz + 140, H = Math.min(520, W * 1.3), s = '', lr = 34, logs = '';
+    for (var row = 0; row * lr * 1.8 + lr * 2 < H - 20; row++) {
+      for (var i = 0; i < Math.floor((W - 30) / (lr * 2.1)) - (row % 2); i++) {
+        var c = P(x0 + 15 + lr * 1.05 + i * lr * 2.1 + (row % 2 ? lr * 1.05 : 0), 18 + lr + row * lr * 1.8, z0);
+        logs += '<circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="' + lr + '" fill="#8a5a33" stroke="#5c3a1e" stroke-width="3"/><circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="' + f(lr * 0.45) + '" fill="none" stroke="#b07a45" stroke-width="2"/>';
+      }
+    }
+    s += poly([P(x0, 0, z1), P(xRight, 0, z1), P(xRight, H, z1), P(x0, H, z1)], 'fill="#241d18"');
+    s += logs;
+    [x0, xRight].forEach(function (x) {
+      s += poly([P(x - 12, 0, z0), P(x + 12, 0, z0), P(x + 12, H, z0), P(x - 12, H, z0)], 'fill="url(#' + id + 'front)" stroke="' + pal.edge + '" stroke-width="2"');
+      s += poly([P(x + 12, 0, z0), P(x + 12, 0, z1), P(x + 12, H, z1), P(x + 12, H, z0)], 'fill="url(#' + id + 'side)"');
+    });
+    s += poly([P(x0 - 12, 0, z0), P(xRight + 12, 0, z0), P(xRight + 12, 18, z0), P(x0 - 12, 18, z0)], 'fill="url(#' + id + 'front)" stroke="' + pal.edge + '" stroke-width="2"');
+    return s;
+  }
+
   /* ---------- Общ рендер за огнища и мангали (призма по контура) ---------- */
   function renderPrism(o) {
     var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id;
@@ -552,7 +595,7 @@
     var cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, spanX = maxX - minX, spanZ = maxZ - minZ;
     var ex = o.extras || {}, isGrill = GRILLS.indexOf(shape) >= 0;
     // капак: при барбекюто и куфара е отворен (зад отвора), при мангала – затворен
-    var lidOpen = shape === 'suitcase' || (shape === 'bbq' && !!ex.lid), closedLid = !!ex.lid && !lidOpen;
+    var lidOpen = shape === 'suitcase' || (shape === 'bbq' && !!ex.lid), closedLid = !!ex.lid && !lidOpen && !o.table;
     var textOnLid = shape === 'suitcase' || (shape === 'bbq' && o.textPlace === 'lid'), lidT = shape === 'bbq' ? H * 0.6 : 25;
     var chevLevels = shape === 'cheverme' ? [top + 260, top + 390, top + 520, top + 650] : null;
     // скарите показват 4 шиша (или избрания комплект), освен ако има скара отгоре
@@ -577,7 +620,9 @@
     var foldW = shape === 'suitcase' ? Math.min(spanX * 0.42, 300) : closedView ? Math.min(spanX * 0.75, 520) : 0, brick = shape === 'insert' ? 175 : 0;
     var toolsL = ex.tools && tableW ? 170 : 0, toolsR = ex.tools && !tableW ? 170 : 0;
     var postL = chevLevels ? 100 : 0, postR = chevLevels ? 160 + (ex.motor ? 170 : 0) : 0;
-    var vx = minOf(sxs) - 50 - (bagW ? bagW + 40 : 0) - tableL - (foldW ? foldW + 70 : 0) - toolsL - postL - brick, vy = -(top + up) - maxZ * KY - 20;
+    // обекти: поставка за дърва вляво от масата / колоната
+    var rackW = ex.log_rack && (shape === 'firetable' || shape === 'column') ? 380 : 0;
+    var vx = minOf(sxs) - 50 - (bagW ? bagW + 40 : 0) - tableL - (foldW ? foldW + 70 : 0) - toolsL - postL - brick - (rackW ? rackW + 70 : 0), vy = -(top + up) - maxZ * KY - 20;
     var vb = [vx, vy, maxOf(sxs) + (ex.arm ? 70 : 0) + tableW + (ex.wheels ? 60 : 0) + toolsR + postR + brick + (lidOpen ? lidT * KX : 0) + 40 - vx, -minZ * KY + 50 - vy];
 
     var defs = makeDefs(id, pal);
@@ -587,6 +632,7 @@
     // сянка
     var sc = P(cx, 0, cz);
     s += '<ellipse cx="' + f(sc[0]) + '" cy="' + f(sc[1] + 8) + '" rx="' + f((maxOf(sxs) - minOf(sxs)) * 0.62) + '" ry="' + f(spanZ * KY + 46) + '" fill="url(#' + id + 'shadow)"/>';
+    if (rackW) s += logRackSide(id, pal, minX - 110, minZ + 170, rackW);
     // калъф за пренасяне – стои вляво на земята
     if (bagW) {
       var bx1 = minX - 40, bx0 = bx1 - bagW, bz0 = minZ, bz1 = minZ + Math.max(60, spanZ * 0.35);
@@ -794,8 +840,6 @@
     // огнище маса на дърва: кръгла огнена купа, вградена в плота, с мрежест искрогасител отгоре
     if (o.table) {
       var hr = o.table.r, hole = circ(cx, cz, hr, top, 0, 2 * Math.PI, 56);
-      defs += '<pattern id="' + id + 'mesh" patternUnits="userSpaceOnUse" width="16" height="16" patternTransform="rotate(45)">' +
-        '<path d="M0 0H16M0 0V16" stroke="#d6dadf" stroke-width="1.8" stroke-opacity=".75"/></pattern>';
       s += '<polygon points="' + pts(hole) + '" fill="url(#' + id + 'inBack)"/>';
       s += '<polygon class="fp-glow" points="' + pts(circ(cx, cz, hr * 0.78, top, 0, 2 * Math.PI, 40)) + '" fill="url(#' + id + 'inGlow)"/>';
       var outer = 'M' + topPoly.map(function (p) { return f(p[0]) + ',' + f(p[1]); }).join('L') + 'Z';
@@ -805,18 +849,15 @@
       var lc = P(cx, top - 40, cz);
       s += '<g stroke="#3b2414" stroke-width="22" stroke-linecap="round"><line x1="' + f(lc[0] - hr * 0.5) + '" y1="' + f(lc[1] + 8) + '" x2="' + f(lc[0] + hr * 0.45) + '" y2="' + f(lc[1] - 12) + '"/>' +
         '<line x1="' + f(lc[0] - hr * 0.4) + '" y1="' + f(lc[1] - 14) + '" x2="' + f(lc[0] + hr * 0.5) + '" y2="' + f(lc[1] + 10) + '"/></g>';
-      s += flamesMarkup(lc[0], P(cx, top, cz - hr * 0.2)[1], hr * 1.5, hr * 1.25, id);
+      if (!ex.lid) s += flamesMarkup(lc[0], P(cx, top, cz - hr * 0.2)[1], hr * 1.5, hr * 1.25, id);
       // ръб на купата
       s += '<polygon points="' + pts(hole) + '" fill="none" stroke="' + pal.rim + '" stroke-width="7"/>';
-      // искрогасител: мрежест купол над купата
-      var L0 = P(cx + hr * Math.cos(TH0 + Math.PI), top, cz + hr * Math.sin(TH0 + Math.PI)), R0 = P(cx + hr * Math.cos(TH0), top, cz + hr * Math.sin(TH0));
-      var dh = hr * 1.05, front = circ(cx, cz, hr, top, FRONT[0], FRONT[1], 40).reverse();
-      var dome = 'M' + f(L0[0]) + ',' + f(L0[1]) + 'C' + f(L0[0]) + ',' + f(L0[1] - dh * 1.3) + ' ' + f(R0[0]) + ',' + f(R0[1] - dh * 1.3) + ' ' + f(R0[0]) + ',' + f(R0[1]) +
-        'L' + front.map(function (p) { return f(p[0]) + ',' + f(p[1]); }).join('L') + 'Z';
-      s += '<path d="' + dome + '" fill="url(#' + id + 'mesh)" stroke="#c4c9ce" stroke-width="5"/>';
-      var tk = P(cx, top + dh * 0.98, cz);
-      s += '<path d="M' + f(tk[0] - 26) + ',' + f(tk[1]) + 'q26,-34 52,0" fill="none" stroke="#9aa0a7" stroke-width="8" stroke-linecap="round"/>';
+      // капак върху отвора (масата става гладка) или искрогасител: мрежест купол над купата
+      if (ex.lid) s += roundLid(id, pal, cx, cz, hr + 14, top);
+      else if (ex.spark_guard) s += sparkDome(id, cx, cz, hr, top);
     }
+    // колона: искрогасител над отвора
+    if (shape === 'column' && ex.spark_guard && !closedLid) s += sparkDome(id, cx, cz, Math.min(spanX, spanZ) * 0.5, top);
 
     // капак (затворен – мангалите)
     if (closedLid) {
@@ -880,7 +921,8 @@
     o.id = o.id || 'fp';
     o.fontFamily = "'fp-" + (o.fontKey || 'russo') + "'";
     o.lid = o.extras && o.extras.lid;
-    var SHAPES = { trapezoid: renderTrapezoid, pedestal: renderPedestal, cross: renderCross, ringbowl: renderRingBowl, plancha: renderPlancha, plancha_sq: renderPlancha };
+    var SHAPES = { trapezoid: renderTrapezoid, pedestal: renderPedestal, cross: renderCross, ringbowl: renderRingBowl, plancha: renderPlancha, plancha_sq: renderPlancha,
+      bowl: renderBowl, ringbench: renderRingBench, firetable: renderFireTable };
     var r = (SHAPES[o.model.shape] || renderPrism)(o);
     var style = o.fontCss ? '<style>' + o.fontCss + '</style>' : '';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + r.viewBox.map(f).join(' ') + '" role="img" aria-label="' + esc(o.title || o.model.name) + '">' +
@@ -1198,24 +1240,67 @@
     return { viewBox: [vx, -(Ht + fh) - R * KY - 40, -vx * 2, Ht + fh + R * KY * 2 + 90], defs: defs, body: s };
   }
 
+  /** Надпис / перфорация върху видимия плосък участък отпред на вертикален цилиндър (радиус r, от y0 до y1) */
+  function chordWall(o, id, pal, defsRef, r, y0, y1, gradR) {
+    var cw = 2 * r * 0.62, Hh = y1 - y0, flat = Object.assign({}, pal, { edge: 'none', brush: false });
+    defsRef.d += '<linearGradient id="' + id + 'bodyL" gradientUnits="userSpaceOnUse" x1="' + f(-gradR * 1.1 + cw / 2) + '" y1="0" x2="' + f(gradR * 1.1 + cw / 2) + '" y2="0">' +
+      pal.front.concat([pal.side[0], pal.side[1]]).map(function (c, i, arr) { return '<stop offset="' + f(i / (arr.length - 1)) + '" stop-color="' + c + '"/>'; }).join('') + '</linearGradient>';
+    defsRef.d += '<clipPath id="' + id + 'cyl">' + cylSide(r, y0, y1, '') + '</clipPath>';
+    return '<g clip-path="url(#' + id + 'cyl)">' + wallMarkup(id + 'm0', cw, Hh, 'matrix(1,0,0,1,' + f(-cw / 2) + ',' + f(-y1 + r * KY / Math.sqrt(1 + KX * KX)) + ')', 'url(#' + id + 'bodyL)', o, true, flat, true) + '</g>';
+  }
+  /** Поставка за дърва около крака на купата: кръгъл рафт с наредени цепеници */
+  function bowlLogRing(id, pal, r, y) {
+    var s = '', n = 9;
+    s += poly(circ(0, 0, r, y, 0, 2 * Math.PI, 48), 'fill="url(#' + id + 'top)" stroke="' + pal.rim + '" stroke-width="3"');
+    for (var k = 0; k < n; k++) {
+      var a = FRONT[0] + (FRONT[1] - FRONT[0]) * (k + 0.5) / n, c = P(r * 0.78 * Math.cos(a), y + 34, r * 0.78 * Math.sin(a));
+      s += '<circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="34" fill="#8a5a33" stroke="#5c3a1e" stroke-width="3"/><circle cx="' + f(c[0]) + '" cy="' + f(c[1]) + '" r="15" fill="none" stroke="#b07a45" stroke-width="2"/>';
+    }
+    return s;
+  }
+
+  /* ---------- Огнище маса на дърва (обект): кутия с плот и вградена огнена купа ---------- */
+  function renderFireTable(o) {
+    var m = o.model;
+    return renderPrism(Object.assign({}, o, { legCm: 0, table: { r: global.FPGeo.objParts('firetable', m.w * 10, m.d * 10, m.h * 10).r } }));
+  }
+
+  /* ---------- Кръгла купа (обект): купа на крак, вертикален пояс по ръба с надписа (център 0,0) ---------- */
   function renderBowl(o) {
-    var pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, R = o.d * 10 / 2;
-    var Hp = 250, Hb = R * 0.6, top = Hp + Hb, fh = R * 0.95, s = '';
-    s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.75) + '" ry="' + f(R * KY + 30) + '" fill="url(#' + id + 'shadow)"/>';
-    // крак и основа
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.black, id = o.id, ex = o.extras || {};
+    var W = m.w * 10, H = m.h * 10, bp = global.FPGeo.objParts('bowl', W, m.d * 10, H);
+    var R = bp.R, Hp = bp.Hp, Hc = bp.Hc, yc = H - Hc, fh = R * 0.95, s = '';
+    var dr = { d: roundDefs(id, pal, R) };
+    s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.8) + '" ry="' + f(R * KY + 30) + '" fill="url(#' + id + 'shadow)"/>';
+    // основа и крак; поставка за дърва – кръгъл рафт около крака
     s += cylSide(R * 0.42, 0, 26, 'fill="url(#' + id + 'side)"');
     s += poly(circ(0, 0, R * 0.42, 26, 0, 2 * Math.PI), 'fill="url(#' + id + 'top)"');
     s += cylSide(R * 0.2, 26, Hp + 30, 'fill="url(#' + id + 'body)"');
-    s += bowlBody(id, R, Hp, Hb, 0.3);
-    // отблясък
-    s += '<path d="M' + f(-R * 0.62) + ',' + f(-top + R * 0.05) + 'Q' + f(-R * 0.55) + ',' + f(-Hp - Hb * 0.25) + ' ' + f(-R * 0.18) + ',' + f(-Hp + 10) + '" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="' + f(R * 0.06) + '" stroke-linecap="round"/>';
-    s += roundTop(id, pal, R, top, fh);
+    if (ex.log_rack) s += bowlLogRing(id, pal, R * 0.62, Math.min(Hp * 0.35, 160));
+    // купа (до пояса) и вертикален пояс по ръба
+    s += bowlBody(id, R, Hp, yc - Hp, 0.3);
+    s += cylSide(R, yc, H, 'fill="url(#' + id + 'body)"');
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    if (decorate) s += chordWall(o, id, pal, dr, R, yc, H, R);
+    s += poly(circ(0, 0, R, yc, FRONT[0], FRONT[1]), 'fill="none" stroke="' + pal.rim + '" stroke-opacity=".6" stroke-width="3"');
+    // отвор: огън, капак или искрогасител
+    if (ex.lid) {
+      s += poly(circ(0, 0, R - 28, H, 0, 2 * Math.PI, 64), 'fill="url(#' + id + 'inBack)"') + ring(R, R - 28, H, [0, 2 * Math.PI], 'fill="' + pal.rim + '"');
+      s += roundLid(id, pal, 0, 0, R + 10, H);
+    } else {
+      s += roundTop(id, pal, R, H, fh);
+      if (ex.spark_guard) s += sparkDome(id, 0, 0, R - 20, H);
+    }
     var vx = -R * 1.12 - 30;
-    return { viewBox: [vx, -(top + fh) - R * KY - 40, -vx * 2, top + fh + R * KY * 2 + 90], defs: roundDefs(id, pal, R), body: s };
+    return { viewBox: [vx, -(H + fh) - R * KY - 40, -vx * 2, H + fh + R * KY * 2 + 90], defs: dr.d, body: s };
   }
 
+  /* ---------- Огнище с пейка-пръстен (обект): дървена седалка на метален пръстен, огнище в средата с надписа ---------- */
   function renderRingBench(o) {
-    var pal = PALETTE[o.finish] || PALETTE.corten, id = o.id, Ro = o.d * 10 / 2, Ri = Ro - 330, Hb = 450, Rp = 430, Hpit = 450, s = '';
+    var m = o.model, pal = PALETTE[o.finish] || PALETTE.corten, id = o.id, ex = o.extras || {};
+    var rp = global.FPGeo.objParts('ringbench', m.w * 10, m.d * 10, m.h * 10);
+    var Ro = rp.Ro, Ri = rp.Ri, Hb = rp.Hb, Rp = rp.Rp, Hpit = rp.Hpit, s = '';
+    var dr = { d: roundDefs(id, pal, Ro) };
     s += '<ellipse cx="0" cy="8" rx="' + f(Ro * 1.15) + '" ry="' + f(Ro * KY + 60) + '" fill="url(#' + id + 'shadow)"/>';
     // каменна настилка вътре в пръстена
     s += poly(circ(0, 0, Ri, 0, 0, 2 * Math.PI, 72), 'fill="#4a433d"');
@@ -1223,39 +1308,43 @@
     // задната половина на пейката: вътрешна стена и седалка
     s += poly(circ(0, 0, Ri, Hb, BACK[0], BACK[1]).concat(circ(0, 0, Ri, 0, BACK[0], BACK[1]).reverse()), 'fill="url(#' + id + 'sideL)"');
     s += ring(Ro, Ri, Hb, BACK, 'fill="url(#' + id + 'wood)"');
-    // огнище в центъра с изрязани прорези, осветени отвътре
+    // огнище в центъра: с надпис / перфорация или с декоративни прорези
+    var dr2 = { d: '' };
     s += cylSide(Rp, 0, Hpit, 'fill="url(#' + id + 'body)"');
-    for (var k = 1; k <= 9; k++) {
-      var a = FRONT[0] + (FRONT[1] - FRONT[0]) * (k / 10), da = 0.05, y0 = Hpit * 0.5, y1 = Hpit * 0.88;
-      var q = [P(Rp * Math.cos(a - da), y1, Rp * Math.sin(a - da)), P(Rp * Math.cos(a + da), y1, Rp * Math.sin(a + da)),
-        P(Rp * Math.cos(a + da), y0, Rp * Math.sin(a + da)), P(Rp * Math.cos(a - da), y0, Rp * Math.sin(a - da))];
-      s += poly(q, 'fill="url(#' + id + 'glow)" class="fp-glow"');
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    if (decorate) {
+      s += chordWall(o, id, pal, dr2, Rp, 0, Hpit, Ro);
+    } else {
+      for (var k = 1; k <= 9; k++) {
+        var a = FRONT[0] + (FRONT[1] - FRONT[0]) * (k / 10), da = 0.05, y0 = Hpit * 0.5, y1 = Hpit * 0.88;
+        var q = [P(Rp * Math.cos(a - da), y1, Rp * Math.sin(a - da)), P(Rp * Math.cos(a + da), y1, Rp * Math.sin(a + da)),
+          P(Rp * Math.cos(a + da), y0, Rp * Math.sin(a + da)), P(Rp * Math.cos(a - da), y0, Rp * Math.sin(a - da))];
+        s += poly(q, 'fill="url(#' + id + 'glow)" class="fp-glow"');
+      }
     }
-    s += roundTop(id, pal, Rp, Hpit, Rp * 1.7);
+    dr.d += dr2.d;
+    if (ex.lid) {
+      s += poly(circ(0, 0, Rp - 28, Hpit, 0, 2 * Math.PI, 64), 'fill="url(#' + id + 'inBack)"') + ring(Rp, Rp - 28, Hpit, [0, 2 * Math.PI], 'fill="' + pal.rim + '"');
+      s += roundLid(id, pal, 0, 0, Rp + 10, Hpit);
+    } else {
+      s += roundTop(id, pal, Rp, Hpit, Rp * 1.7);
+      if (ex.spark_guard) s += sparkDome(id, 0, 0, Rp - 20, Hpit);
+    }
     // предната половина на пейката
     s += cylSide(Ro, 0, Hb, 'fill="url(#' + id + 'body)"');
     s += ring(Ro, Ri, Hb, FRONT, 'fill="url(#' + id + 'wood)"');
     s += poly(circ(0, 0, Ro, Hb, FRONT[0], FRONT[1]), 'fill="none" stroke="#5e3a1c" stroke-width="5"');
-    var vx = -Ro * 1.1 - 40, topY = -(Hpit + Rp * 1.7) - Rp * KY - 40;
-    return { viewBox: [vx, Math.min(topY, -Hb - Ro * KY - 40), -vx * 2, -Math.min(topY, -Hb - Ro * KY - 40) + Ro * KY + 80], defs: roundDefs(id, pal, Ro), body: s };
-  }
-
-  /** Модели за обекти: bowl, ring, table, column */
-  function renderShowcase(item, o) {
-    o = o || {};
-    var id = o.id || ('sc' + item.code), r;
-    var base = { id: id, finish: item.finish, layout: o.layout, fonts: o.fonts, fontKey: o.fontKey || 'russo', fontFamily: "'fp-" + (o.fontKey || 'russo') + "'" };
-    if (item.kind === 'bowl') r = renderBowl({ id: id, finish: item.finish, d: item.d });
-    else if (item.kind === 'ring') r = renderRingBench({ id: id, finish: item.finish, d: item.d });
-    else {
-      var m = { shape: 'box', w: item.w, d: item.dd, h: item.h, name: item.name };
-      var po = Object.assign(base, { model: m, legCm: 0, extras: {}, decoratedCount: 2, text: o.text || '', fit: o.fit || null, pattern: o.pattern || null });
-      if (item.kind === 'table') po.table = { r: Math.min(item.w, item.dd) * 10 * 0.36 };
-      r = renderPrism(po);
+    // сегментите на пейката (вертикални фуги по предната стена)
+    var segs = global.FPGeo.benchSegments(m, { sheet_w_mm: 2970, sheet_h_mm: 1470 });
+    if (o.segments) segs = o.segments;
+    for (var j = 0; j < segs; j++) {
+      var aj = TH0 + Math.PI + (j + 0.5) * 2 * Math.PI / segs;
+      var na = ((aj - FRONT[0]) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      if (na > 0.08 && na < Math.PI - 0.08) s += line(P(Ro * Math.cos(aj), 0, Ro * Math.sin(aj)), P(Ro * Math.cos(aj), Hb, Ro * Math.sin(aj)), 'stroke="' + pal.edge + '" stroke-width="3" stroke-opacity=".7"');
     }
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + r.viewBox.map(f).join(' ') + '" role="img" aria-label="' + esc(item.name) + '">' +
-      '<defs>' + r.defs + '</defs>' + r.body + '</svg>';
+    var vx = -Ro * 1.1 - 40, topY = -(Hpit + Rp * 1.7) - Rp * KY - 40;
+    return { viewBox: [vx, Math.min(topY, -Hb - Ro * KY - 40), -vx * 2, -Math.min(topY, -Hb - Ro * KY - 40) + Ro * KY + 80], defs: dr.d, body: s };
   }
 
-  global.FPRender = { render: render, renderShowcase: renderShowcase, patterns: PATTERNS, perf: perfPath, KX: KX, KY: KY };
+  global.FPRender = { render: render, patterns: PATTERNS, perf: perfPath, KX: KX, KY: KY };
 })(window);

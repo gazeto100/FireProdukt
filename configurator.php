@@ -76,6 +76,74 @@ page_header('Сглоби своя модел', ['body_class' => 'page-config', 
         <p class="small muted">Без плащане и без задължение. Ще ви се обадим до 1 работен ден с оферта и проект.</p>
       </form>
     </section>
+
+    <?php /* вид „по проект“ (обекти): последната стъпка е проектната форма; запитването се записва като „Проект“ */ ?>
+    <section class="step step-send" id="st-project" hidden>
+      <h2><span class="num"></span>Проект и запитване</h2>
+      <p class="cfg-price cfg-quote">Цена по оферта</p>
+      <form id="projForm" novalidate enctype="multipart/form-data">
+        <div class="field">
+          <label for="p-object">Обект <span class="req">*</span></label>
+          <input id="p-object" name="object" type="text" maxlength="150" placeholder="напр. Хотел „Елена“, къща за гости, ресторант" required>
+          <p class="err" data-err="object" hidden></p>
+        </div>
+        <div class="field">
+          <label for="p-city">Населено място</label>
+          <input id="p-city" name="city" type="text" maxlength="100" autocomplete="address-level2">
+        </div>
+        <div class="two-col">
+          <div class="field">
+            <label for="p-qty">Брой <span class="req">*</span></label>
+            <input id="p-qty" name="quantity" type="number" inputmode="numeric" min="1" max="500" value="1" required>
+            <p class="err" data-err="quantity" hidden></p>
+          </div>
+          <div class="field">
+            <label for="p-deadline">Срок</label>
+            <select id="p-deadline" name="deadline">
+              <?php foreach (project_deadlines() as $k => $label): ?><option value="<?= e($k) ?>" <?= $k === 'm3' ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <h3 class="form-sub">Лице за контакт</h3>
+        <div class="field">
+          <label for="p-name">Име <span class="req">*</span></label>
+          <input id="p-name" name="contact_name" type="text" maxlength="100" autocomplete="name" required>
+          <p class="err" data-err="contact_name" hidden></p>
+        </div>
+        <div class="field">
+          <label for="p-phone">Телефон <span class="req">*</span></label>
+          <input id="p-phone" name="phone" type="tel" inputmode="tel" maxlength="32" autocomplete="tel" placeholder="0888 123 456" required>
+          <p class="err" data-err="phone" hidden></p>
+        </div>
+        <div class="field">
+          <label for="p-email">Имейл <span class="req">*</span></label>
+          <input id="p-email" name="email" type="email" inputmode="email" maxlength="190" autocomplete="email" required>
+          <p class="err" data-err="email" hidden></p>
+        </div>
+        <div class="field">
+          <label for="p-note">Бележка</label>
+          <textarea id="p-note" name="note" rows="3" maxlength="3000" placeholder="Размери на мястото, брой седящи, монтаж, бюджет…"></textarea>
+        </div>
+        <div class="field">
+          <label for="p-logo">Лого <span class="muted">(по желание – PNG, JPG, SVG или PDF до 5 MB)</span></label>
+          <input id="p-logo" name="logo" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf,image/png,image/jpeg,image/svg+xml,application/pdf">
+          <p class="small muted" id="logoInfo"></p>
+          <p class="err" data-err="logo" hidden></p>
+        </div>
+        <div class="hp" aria-hidden="true">
+          <label for="p-website">Уебсайт</label>
+          <input id="p-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <div class="field check">
+          <label><input type="checkbox" name="consent" value="1"> <span>Съгласен/на съм данните ми да бъдат обработени за отговор на запитването съгласно <a href="<?= e(url('privacy.php')) ?>" target="_blank">политиката за поверителност</a>. <span class="req">*</span></span></label>
+          <p class="err" data-err="consent" hidden></p>
+        </div>
+        <p class="err" id="textBlockP" hidden>Поправете надписа по-горе, за да изпратите запитването.</p>
+        <button type="submit" class="btn btn-block btn-lg" id="projBtn">Изпрати запитване по проект</button>
+        <p class="err form-msg" id="projMsg" role="alert" hidden></p>
+        <p class="small muted">Без плащане и без задължение. Ще ви се обадим до 1 работен ден с предложение и проект.</p>
+      </form>
+    </section>
   </div>
 </main>
 
@@ -90,6 +158,8 @@ window.FP_CFG = <?= json_encode([
     'csrf' => csrf_token(),
     't' => $_SESSION['form_t'],
     'inquiryUrl' => url('api/inquiry.php'),
+    'projectUrl' => url('api/project.php'),
+    'maxBytes' => UPLOAD_MAX_BYTES,
     'trackUrl' => url('api/track.php'),
     'tokenUrl' => url('api/token.php'),
     'fontsUrl' => url('assets/fonts/'),

@@ -30,7 +30,7 @@
 
   function scene(m, i, opts) {
     opts = opts || {};
-    var simple = ['pedestal', 'cross', 'ringbowl', 'trapezoid', 'plancha', 'plancha_sq', 'insert', 'suitcase', 'bbq', 'grill', 'tabletop', 'cheverme'].indexOf(m.shape) >= 0;
+    var simple = ['pedestal', 'cross', 'ringbowl', 'trapezoid', 'plancha', 'plancha_sq', 'insert', 'suitcase', 'bbq', 'grill', 'tabletop', 'cheverme', 'bowl', 'ringbench', 'firetable'].indexOf(m.shape) >= 0;
     var pattern = opts.pattern !== undefined ? opts.pattern : simple ? null : PATTERNS[i % PATTERNS.length];
     var sides = opts.sides || (G.modelWalls(m).length > 1 ? 2 : 1), walls = G.decoratedWalls(m, sides), text = '', fit = null;
     var list = opts.text ? [opts.text] : SAMPLES.slice(i).concat(SAMPLES.slice(0, i));
@@ -50,7 +50,7 @@
 
   Array.prototype.forEach.call(document.querySelectorAll('.g-card'), function (card, i) {
     var m = CAT.models.filter(function (x) { return x.code === card.getAttribute('data-model'); })[0];
-    if (m) card.querySelector('.g-img').innerHTML = scene(m, i);
+    if (m) card.querySelector('.g-img').innerHTML = scene(m, i, card.getAttribute('data-text') ? { text: card.getAttribute('data-text') } : {});
   });
 
   // прерисуване след зареждане на шрифта, за да е точен надписът

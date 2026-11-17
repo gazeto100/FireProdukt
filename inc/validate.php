@@ -120,13 +120,17 @@ function validate_config(array $in, array $cat): array
         }
     }
 
-    $qty = filter_var($in['quantity'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 50]]);
+    // вид „по проект“ (обекти): до 500 бр.
+    $isProject = !empty($model['project']);
+    $qMax = $isProject ? 500 : 50;
+    $qty = filter_var($in['quantity'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => $qMax]]);
     if ($qty === false) {
-        $errors['quantity'] = 'Количеството трябва да е между 1 и 50.';
+        $errors['quantity'] = 'Количеството трябва да е между 1 и ' . $qMax . '.';
         $qty = 1;
     }
 
-    // правила между опциите (от данните): „изключва се с“ (в двете посоки) и „изисква“
+    // правила между опциите (от данните): „изключва се с“ (в двете посоки) и „изисква“;
+    // „изисква“ важи само ако моделът изобщо предлага изискваната опция (напр. поставката за дърва при формите без крачета)
     $selIds = array_map(fn($x) => $x['opt']['id'], $sel);
     foreach ($cat['rules'] ?? [] as $r) {
         $a = $cat['options'][$r['option']] ?? null;
@@ -136,7 +140,7 @@ function validate_config(array $in, array $cat): array
         }
         if ($r['kind'] === 'excludes' && in_array($b['id'], $selIds, true)) {
             $errors['options.' . $a['group']] = '„' . $a['name'] . '“ и „' . $b['name'] . '“ не могат заедно.';
-        } elseif ($r['kind'] === 'requires' && !in_array($b['id'], $selIds, true)) {
+        } elseif ($r['kind'] === 'requires' && isset($compat[$b['id']]) && !in_array($b['id'], $selIds, true)) {
             $errors['options.' . $a['group']] = '„' . $a['name'] . '“ изисква „' . $b['name'] . '“.';
         }
     }
@@ -147,7 +151,8 @@ function validate_config(array $in, array $cat): array
         : calc_price($model, $sel, count($walls), $isDecorated, (int)$qty);
     $weight = calc_weight($model, $sel);
     // бележки за офертата: тежко -> палет (за всеки модел); размер по избор, който не се побира в листа -> две части
-    $pallet = $weight['kg'] > (float)setting('pallet_kg', '30');
+    // при вид „по проект“ доставката и монтажът се уточняват в офертата (без бележка за палет)
+    $pallet = !$isProject && $weight['kg'] > (float)setting('pallet_kg', '30');
     $sheet = $custom ? sheet_fit($model, $form['construction'] ?? 'panels') : ['fits' => true, 'part' => ''];
 
     $config = [
@@ -161,6 +166,7 @@ function validate_config(array $in, array $cat): array
             'h' => $model['h'],
             'form_name' => $form['name'] ?? null,
         ],
+        'project' => $isProject,
         'options' => $chosen,
         'text' => $text,
         'text_length' => text_length($text),
@@ -176,6 +182,8 @@ function validate_config(array $in, array $cat): array
         'pallet' => $pallet,
         'two_parts' => !$sheet['fits'],
         'two_parts_part' => $sheet['part'],
+        // огнище с пейка-пръстен: пейката е от сегменти; седалката е от дърво (не влиза в теглото)
+        'segments' => bench_segments($model),
     ];
 
     return ['errors' => $errors, 'config' => $config, 'price' => $price, 'weight' => $weight, 'model' => $model];
@@ -219,7 +227,8 @@ function text_check(array $lines, string $fontKey, array $walls, bool $hasOrname
 /** Четим списък на конфигурацията за имейли и админа */
 function config_lines(array $cfg, array $cat): array
 {
-    if (($cfg['kind'] ?? '') === 'project') {
+    // кратка проектна форма (без конфигурация)
+    if (($cfg['kind'] ?? '') === 'project' && empty($cfg['model'])) {
         return project_lines($cfg);
     }
     $groupNames = [];
@@ -258,11 +267,22 @@ function config_lines(array $cfg, array $cat): array
     if (!empty($cfg['two_parts'])) {
         $lines['Изработка'] = 'от две части – не се побира в листа (' . ($cfg['two_parts_part'] ?? '') . '); цената се уточнява в офертата';
     }
-    if (!empty($cfg['pallet'])) {
+    if (!empty($cfg['segments'])) {
+        $lines['Пейка'] = 'от ' . (int)$cfg['segments'] . ' сегмента. Седалката е от дърво и се уточнява по проект.';
+    }
+    if (!empty($cfg['project'])) {
+        $lines['Доставка'] = 'Доставката и монтажът се уточняват в офертата';
+    } elseif (!empty($cfg['pallet'])) {
         $lines['Доставка'] = 'с палет (над ' . fmt_num(setting('pallet_kg', '30')) . ' кг); цената се уточнява в офертата';
     }
     $lines['Количество'] = $cfg['quantity'] . ' бр.';
     $lines['Приблизително тегло'] = fmt_kg((float)$cfg['weight_kg']) . ' / бр.';
+    // проект от конфигуратора: обект, срок и лого от проектната форма
+    if (($cfg['kind'] ?? '') === 'project') {
+        $lines = ['Вид' => 'Проект за обект', 'Обект' => ($cfg['object'] ?? '') !== '' ? $cfg['object'] : (!empty($cfg['object_removed']) ? '(изтрит)' : '—')] + $lines;
+        $lines['Срок'] = project_deadlines()[$cfg['deadline'] ?? ''] ?? '—';
+        if (!empty($cfg['logo'])) $lines['Лого'] = $cfg['logo'];
+    }
     return $lines;
 }
 
