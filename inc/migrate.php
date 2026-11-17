@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 function run_migrations(): void
 {
@@ -87,7 +87,13 @@ function run_migrations(): void
             require_once __DIR__ . '/migrate_v12.php';
             migrate_v12();
         }
+        if ($v < 13) {
+            // „По ваша идея“: бюджетни диапазони и минимална сума за индивидуален проект (настройки)
+            require_once __DIR__ . '/migrate_v13.php';
+            migrate_v13();
+        }
         save_setting('schema_version', (string)SCHEMA_VERSION);
+        settings_all(true);
     } catch (Throwable $e) {
         error_log('migration: ' . $e->getMessage());
     }

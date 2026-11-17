@@ -36,5 +36,6 @@ require __DIR__ . '/svg_sanitize.php';
 require __DIR__ . '/layout.php';
 require __DIR__ . '/uploads.php';
 require __DIR__ . '/showcase.php';
+require __DIR__ . '/idea.php';
 require __DIR__ . '/migrate.php';
 run_migrations();

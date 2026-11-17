@@ -303,7 +303,7 @@
     html += stepHtml('st-form', 'Форма', '<div class="opts opts-models">' + formsOfType(state.type).map(function (f) {
       var thumb = '<span class="thumb" data-thumb="' + esc(f.models[0]) + '"></span>';
       return optCard('form', f.code, curForm && curForm.code === f.code, f.name, formRange(f), 'opt-model', thumb);
-    }).join('') + '</div>');
+    }).join('') + '</div>' + (CFG.ideaUrl ? '<p class="idea-link"><a href="' + esc(CFG.ideaUrl) + '">Не намирате своя модел? Изпратете идеята си</a></p>' : ''));
     var sizes = (curForm ? curForm.models : [m.code]).map(function (c) { return CAT.models.filter(function (x) { return x.code === c; })[0]; }).filter(Boolean);
     var lim = curForm && curForm.custom;
     var sizeBody = curForm && curForm.custom_only ? '<p class="step-hint">Изработва се по мярка – задайте размерите на мястото за вграждане.</p>' : '<div class="sizes">' + sizes.map(function (x) {

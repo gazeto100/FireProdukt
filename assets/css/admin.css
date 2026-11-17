@@ -128,3 +128,8 @@ details summary { cursor: pointer; padding: 4px 0; }
 
 /* лого при обикновено запитване */
 .badge-logo { background: #e8f1ff; color: #1f4f99; }
+
+/* По идея */
+.badge-idea { background: #efe6ff; color: #5b2d9e; }
+.idea-files-admin { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.idea-files-admin .logo-prev img { max-width: 160px; max-height: 160px; object-fit: contain; }

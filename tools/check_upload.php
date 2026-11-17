@@ -1,6 +1,7 @@
 <?php
-// Проверка на правилата за качване на лого от командния ред (без HTTP):
-//   php tools/check_upload.php ПАПКА_С_ТЕСТОВИ_ФАЙЛОВЕ [--store]
+// Проверка на правилата за качване от командния ред (без HTTP):
+//   php tools/check_upload.php ПАПКА_С_ТЕСТОВИ_ФАЙЛОВЕ [--idea] [--store]
+// --idea проверява по правилата на „По ваша идея“ (JPG, PNG, WebP, HEIC, PDF, SVG, DXF до 8 MB), иначе – за лого.
 // --store записва валидните файлове в папката за качване и създава тестово запитване „Проект“ (за проверка в админа).
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') {
@@ -12,6 +13,7 @@ require dirname(__DIR__) . '/inc/bootstrap.php';
 
 $dir = rtrim($argv[1] ?? '', '/\\');
 $store = in_array('--store', $argv, true);
+$profile = in_array('--idea', $argv, true) ? 'idea' : 'logo';
 if (!is_dir($dir)) {
     exit("Използване: php tools/check_upload.php ПАПКА [--store]\n");
 }
@@ -19,9 +21,9 @@ echo 'Папка за качване: ' . upload_dir() . (upload_dir_is_public(u
 foreach (glob($dir . '/*') as $path) {
     if (!is_file($path) || preg_match('/\.(txt|html)$/', $path)) continue;
     $f = ['name' => basename($path), 'tmp_name' => $path, 'size' => filesize($path), 'error' => UPLOAD_ERR_OK];
-    $r = upload_check($f, false);
-    printf("%-12s %8s  %s\n", basename($path), fmt_bytes((int)filesize($path)), $r['ok'] ? '✓ приет като ' . strtoupper($r['ext']) : '✗ ' . $r['error']);
-    if ($store && $r['ok'] && empty($r['none'])) {
+    $r = upload_check($f, false, $profile);
+    printf("%-22s %8s  %s\n", basename($path), fmt_bytes((int)filesize($path)), $r['ok'] ? '✓ приет като ' . strtoupper($r['ext']) : '✗ ' . $r['error']);
+    if ($store && $profile === 'logo' && $r['ok'] && empty($r['none'])) {
         $stored = upload_store($r, false);
         if (!$stored) { echo "   ! не можа да се запише\n"; continue; }
         $code = 'FP-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));

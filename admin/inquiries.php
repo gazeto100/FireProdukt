@@ -4,7 +4,7 @@ require __DIR__ . '/_init.php';
 require_admin();
 
 $statuses = inquiry_statuses();
-$kinds = ['config' => 'От конфигуратора', 'project' => 'Проекти'];
+$kinds = ['config' => 'От конфигуратора', 'project' => 'Проекти', 'idea' => 'По идея'];
 $status = (string)($_GET['status'] ?? '');
 $kind = isset($kinds[$_GET['kind'] ?? '']) ? (string)$_GET['kind'] : '';
 $anon = ($_GET['anon'] ?? '') === '1';
@@ -69,19 +69,22 @@ admin_header('Запитвания', 'inquiries');
   <p class="card muted">Няма запитвания в този филтър.</p>
 <?php else: ?>
 <div class="list">
-  <?php foreach ($rows as $r): $cfg = json_decode($r['config_json'], true) ?: []; $isProj = $r['kind'] === 'project'; ?>
+  <?php foreach ($rows as $r): $cfg = json_decode($r['config_json'], true) ?: []; $isProj = $r['kind'] === 'project'; $isIdea = $r['kind'] === 'idea'; ?>
   <a class="row card<?= $isProj ? ' row-project' : '' ?>" href="inquiry.php?id=<?= (int)$r['id'] ?>">
     <div class="row-main">
       <?php if ($isProj): ?><span class="badge badge-project">Проект</span><?php endif; ?>
+      <?php if ($isIdea): ?><span class="badge badge-idea">По идея</span><?php endif; ?>
       <?php if (!empty($cfg['custom'])): ?><span class="badge badge-custom">Размер по избор: <?= e(shape_is_round((string)($cfg['model']['shape'] ?? '')) ? 'Ø' . fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['h']) : fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['d']) . ' × ' . fmt_num($cfg['model']['h'])) ?> см</span><?php endif; ?>
       <?php if (!empty($cfg['pallet'])): ?><span class="badge badge-flag">палет</span><?php endif; ?>
       <?php if (!empty($cfg['two_parts'])): ?><span class="badge badge-flag">2 части</span><?php endif; ?>
-      <?php if (!$isProj && $r['files']): ?><span class="badge badge-logo">лого</span><?php endif; ?>
+      <?php if (!$isProj && !$isIdea && $r['files']): ?><span class="badge badge-logo">лого</span><?php endif; ?>
       <span class="badge st-<?= e($r['status']) ?>"><?= e($statuses[$r['status']] ?? $r['status']) ?></span>
       <b><?= $r['name'] !== '' ? e($r['name']) : '<span class="muted">(изтрити лични данни)</span>' ?></b><?= $r['phone'] !== '' ? ' · ' . e($r['phone']) : '' ?><?= $r['city'] ? ' · ' . e($r['city']) : '' ?>
     </div>
     <div class="row-sub">
-      <?php if ($isProj && !empty($cfg['model'])): ?>
+      <?php if ($isIdea): ?>
+        <?= e(idea_whats()[$cfg['what'] ?? ''] ?? 'Идея') ?> · <?= e(mb_strimwidth((string)($cfg['description'] ?? ''), 0, 70, '…')) ?> · бюджет: <?= e($cfg['budget'] ?? '—') ?> · <?= (int)$r['files'] ?> файла
+      <?php elseif ($isProj && !empty($cfg['model'])): ?>
         <?= e(($cfg['object'] ?? '') !== '' ? $cfg['object'] : 'Обект') ?> · <?= e(!empty($cfg['custom']) ? ($cfg['model']['form_name'] ?? $r['model_name'] ?? '') : ($r['model_name'] ?? ($cfg['model']['name'] ?? '—'))) ?> · <?= e($cfg['options']['material']['name'] ?? '—') ?><?= ($cfg['text'] ?? '') !== '' ? ' · „' . e($cfg['text']) . '“' : '' ?> · <?= (int)$r['quantity'] ?> бр.<?= $r['files'] ? ' · 📎 лого' : '' ?>
       <?php elseif ($isProj): ?>
         <?= e(($cfg['object'] ?? '') !== '' ? $cfg['object'] : 'Обект') ?> · <?= (int)$r['quantity'] ?> бр. · <?= e(project_materials_short()[$cfg['material'] ?? ''] ?? '—') ?><?= $r['files'] ? ' · 📎 лого' : '' ?>
@@ -92,7 +95,7 @@ admin_header('Запитвания', 'inquiries');
     <div class="row-meta">
       <span><?= e(date('d.m.Y H:i', strtotime($r['created_at']))) ?></span>
       <span><?= e($r['public_code']) ?></span>
-      <?php if (!$isProj): ?><span><?= e(price_range_text((float)$r['price_min'], (float)$r['price_max'])) ?></span><?php endif; ?>
+      <?php if (!$isProj && !$isIdea): ?><span><?= e(price_range_text((float)$r['price_min'], (float)$r['price_max'])) ?></span><?php endif; ?>
       <?php if ($r['utm_source']): ?><span>източник: <?= e($r['utm_source']) ?></span><?php endif; ?>
       <?php if ($r['mail_fail'] && !$r['mail_ok']): ?><span class="warn">⚠ имейлът не е изпратен</span><?php endif; ?>
     </div>

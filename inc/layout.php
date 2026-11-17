@@ -27,8 +27,13 @@ function page_header(string $title, array $o = []): void
       <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2c2 6 9 9 9 17a9 9 0 0 1-18 0c0-5 3-7 4-11 1 3 3 4 3 4s-1-6 2-10z"/></svg>
       <span><?= e($site) ?></span>
     </a>
+    <nav class="site-nav" aria-label="Основно меню">
+      <a href="<?= e(url('#models')) ?>">Модели</a>
+      <a href="<?= e(url('za-hoteli.php')) ?>">За хотели</a>
+      <a href="<?= e(url('po-vasha-ideya.php')) ?>">По ваша идея</a>
+    </nav>
     <?php if (empty($o['hide_cta'])): ?>
-    <a class="btn btn-sm" href="<?= e(url('configurator.php')) ?>">Сглоби своя модел</a>
+    <a class="btn btn-sm header-cta" href="<?= e(url('configurator.php')) ?>">Сглоби своя модел</a>
     <?php endif; ?>
   </div>
 </header>

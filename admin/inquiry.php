@@ -38,6 +38,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($cfg['object'] ?? '') !== '') { $cfg['object'] = ''; $cfg['object_removed'] = true; }
         }
         if (($cfg['logo'] ?? '') !== '') { $cfg['logo'] = '(изтрито)'; }
+        if (($cfg['kind'] ?? '') === 'idea') {
+            // остават вид, размери, материал, брой, бюджет и броят файлове за статистиката
+            if (($cfg['description'] ?? '') !== '') { $cfg['description'] = ''; $cfg['description_removed'] = true; }
+            if (($cfg['inscription'] ?? '') !== '') { $cfg['inscription'] = ''; $cfg['inscription_removed'] = true; }
+            if (!empty($cfg['files'])) { $cfg['files_removed'] = count($cfg['files']); $cfg['files'] = []; }
+        }
         db()->beginTransaction();
         db()->prepare("UPDATE inquiries SET name = '', phone = '', email = NULL, city = NULL, note = NULL, svg = NULL, ip_hash = NULL,
             user_agent = NULL, referrer = NULL, landing_url = NULL, config_json = ?, anonymized_at = NOW() WHERE id = ?")
@@ -72,6 +78,7 @@ $notes = db_all('SELECT n.*, a.username FROM inquiry_notes n LEFT JOIN admins a 
 $mails = db_all('SELECT * FROM mail_log WHERE inquiry_id = ? ORDER BY id', [$id]);
 $tel = preg_replace('/[^\d+]/', '', $inq['phone']);
 $isProj = $inq['kind'] === 'project';
+$isIdea = $inq['kind'] === 'idea';
 // проект от конфигуратора: има модел и пълна конфигурация (преглед, размер, опции, надпис)
 $projCfg = $isProj && !empty($cfg['model']);
 $files = db_all('SELECT * FROM uploads WHERE inquiry_id = ? ORDER BY id', [$id]);
@@ -80,13 +87,33 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
 ?>
 <p><a href="inquiries.php">← Всички запитвания</a></p>
 <div class="a-title">
-  <h1><?= e($inq['public_code']) ?> <?= $isProj ? '<span class="badge badge-project">Проект</span>' : '' ?> <?= !empty($cfg['custom']) ? '<span class="badge badge-custom">Размер по избор</span>' : '' ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
+  <h1><?= e($inq['public_code']) ?> <?= $isProj ? '<span class="badge badge-project">Проект</span>' : '' ?><?= $isIdea ? '<span class="badge badge-idea">По идея</span>' : '' ?> <?= !empty($cfg['custom']) ? '<span class="badge badge-custom">Размер по избор</span>' : '' ?> <span class="badge st-<?= e($inq['status']) ?>"><?= e($statuses[$inq['status']] ?? $inq['status']) ?></span></h1>
   <span class="muted"><?= e(date('d.m.Y H:i', strtotime($inq['created_at']))) ?></span>
 </div>
 
 <div class="grid2">
   <section class="card">
-    <?php if ($isProj): ?>
+    <?php if ($isIdea): ?>
+      <h2>Запитване по идея</h2>
+      <div class="idea-files-admin">
+        <?php foreach ($files as $fl): $img = in_array($fl['ext'], ['png', 'jpg', 'webp'], true); ?>
+          <div class="logo-box">
+            <?php if ($img): ?>
+              <a class="logo-prev" href="upload.php?id=<?= (int)$fl['id'] ?>&amp;inline=1" target="_blank" rel="noopener"><img src="upload.php?id=<?= (int)$fl['id'] ?>&amp;thumb=1" alt="" loading="lazy"></a>
+            <?php else: ?>
+              <div class="logo-prev logo-file"><?= e(strtoupper($fl['ext'])) ?></div>
+            <?php endif; ?>
+            <div>
+              <b class="break"><?= e($fl['original_name']) ?></b><br><span class="muted small"><?= e(strtoupper($fl['ext'])) ?> · <?= e(fmt_bytes((int)$fl['size'])) ?></span><br>
+              <a class="a-btn a-btn-ghost" href="upload.php?id=<?= (int)$fl['id'] ?>">⇩ Свали</a>
+              <?php if ($fl['ext'] === 'heic'): ?><p class="muted small">HEIC (iPhone) не се показва в браузъра – свалете го. Пазим го както е изпратен (с EXIF данните).</p><?php endif; ?>
+              <?php if (in_array($fl['ext'], ['svg', 'pdf', 'dxf'], true)): ?><p class="muted small">Само за сваляне (сигурност).</p><?php endif; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+        <?php if (!$files): ?><p class="muted small">Няма файлове<?= !empty($cfg['files_removed']) ? ' (изтрити)' : '' ?>.</p><?php endif; ?>
+      </div>
+    <?php elseif ($isProj): ?>
       <h2>Запитване по проект<?= $projCfg ? ' <span class="muted small">(от конфигуратора)</span>' : '' ?></h2>
       <?php if ($projCfg): ?>
         <?php if ($inq['svg']): ?><div class="preview"><img src="svg.php?id=<?= (int)$id ?>" alt="Преглед"></div><?php else: ?><p class="muted">Няма запазен преглед.</p><?php endif; ?>
@@ -130,9 +157,9 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
     <?php endif; ?>
     <table class="kv">
       <?php foreach ($lines as $k => $v): ?>
-        <tr><th><?= e($k) ?></th><td><?= e($v) ?></td></tr>
+        <tr><th><?= e($k) ?></th><td><?= nl2br(e($v)) ?></td></tr>
       <?php endforeach; ?>
-      <?php if (!$isProj): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b></td></tr><?php endif; ?>
+      <?php if (!$isProj && !$isIdea): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b></td></tr><?php endif; ?>
       <?php if ($projCfg && $inq['price_min'] !== null): ?><tr><th>Ориентировъчна цена</th><td><b><?= e(price_range_text((float)$inq['price_min'], (float)$inq['price_max'])) ?></b> <span class="muted small">(не е показана на клиента – цена по оферта)</span></td></tr><?php endif; ?>
     </table>
     <details><summary>Конфигурация (JSON)</summary><pre><?= e(json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre></details>

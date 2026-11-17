@@ -231,6 +231,10 @@ function text_check(array $lines, string $fontKey, array $walls, bool $hasOrname
 /** Четим списък на конфигурацията за имейли и админа */
 function config_lines(array $cfg, array $cat): array
 {
+    // „По ваша идея“
+    if (($cfg['kind'] ?? '') === 'idea') {
+        return idea_lines($cfg);
+    }
     // кратка проектна форма (без конфигурация)
     if (($cfg['kind'] ?? '') === 'project' && empty($cfg['model'])) {
         return project_lines($cfg);

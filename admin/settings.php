@@ -25,6 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'site_name' => $in('site_name') ?: 'FireProdukt',
         'notify_email' => $in('notify_email'),
         'contact_deadline' => $in('contact_deadline') ?: '2 работни дни',
+        'idea_min_price' => trim(str_replace(',', '.', $in('idea_min_price'))),
+        'idea_budgets' => trim(str_replace("\r\n", "\n", (string)($_POST['idea_budgets'] ?? ''))),
         'contact_phone' => $in('contact_phone'),
         'currency' => $in('currency') ?: '€',
         'show_prices' => isset($_POST['show_prices']) ? '1' : '0',
@@ -97,6 +99,11 @@ admin_header('Настройки', 'settings');
     <label>Имейл за известия за нови запитвания<input name="notify_email" type="email" value="<?= $v('notify_email') ?>"></label>
     <label>Срок за обратна връзка (след „Ще се свържем с вас до …“ – в имейла до клиента и на страницата след изпращане)<input name="contact_deadline" maxlength="60" value="<?= e(contact_deadline()) ?>" placeholder="2 работни дни"></label>
     <label>Телефон за контакт (показва се във футъра)<input name="contact_phone" value="<?= $v('contact_phone') ?>"></label>
+  </section>
+  <section class="card">
+    <h2>По ваша идея</h2>
+    <label>Индивидуалните проекти започват от (€) – празно: изречението не се показва<input name="idea_min_price" inputmode="decimal" maxlength="12" value="<?= e((string)setting('idea_min_price', '')) ?>" placeholder="напр. 400"></label>
+    <label>Бюджет – диапазони (по един на ред; „Не знам“ се добавя винаги)<textarea name="idea_budgets" rows="5"><?= e((string)setting('idea_budgets', '')) ?></textarea></label>
   </section>
 
   <section class="card">

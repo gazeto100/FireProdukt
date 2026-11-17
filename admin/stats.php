@@ -70,6 +70,16 @@ $rej = db_all('SELECT reason, SUM(cnt) c FROM rejected_log WHERE day >= ? GROUP 
 $rejDays = db_all('SELECT day, reason, cnt FROM rejected_log WHERE day >= ? ORDER BY day DESC, reason LIMIT 200', [$from]);
 
 $projects = (int)db_one("SELECT COUNT(*) c FROM inquiries WHERE kind = 'project' AND created_at >= ?", [$from])['c'];
+// „По идея“: по дни и по бюджет
+$ideaDays = [];
+$ideaBudgets = [];
+foreach (db_all("SELECT DATE(created_at) d, config_json FROM inquiries WHERE kind = 'idea' AND created_at >= ? ORDER BY created_at DESC", [$from]) as $r) {
+    $ideaDays[$r['d']] = ($ideaDays[$r['d']] ?? 0) + 1;
+    $b = (json_decode($r['config_json'], true) ?: [])['budget'] ?? 'Не знам';
+    $ideaBudgets[$b] = ($ideaBudgets[$b] ?? 0) + 1;
+}
+$ideas = array_sum($ideaDays);
+arsort($ideaBudgets);
 $pct = fn($a, $b) => $b ? number_format($a / $b * 100, 1, ',', '') . '%' : '—';
 
 admin_header('Статистика', 'stats');
@@ -86,7 +96,7 @@ admin_header('Статистика', 'stats');
 <div class="kpis">
   <div class="kpi"><b><?= $tot['v'] ?></b><span>посещения на конфигуратора (уникални сесии)</span></div>
   <div class="kpi"><b><?= $tot['txt'] ?></b><span>въвели надпис (<?= $pct($tot['txt'], $tot['v']) ?>)</span></div>
-  <div class="kpi"><b><?= $tot['lead'] ?></b><span>запитвания (<?= $pct($tot['lead'], $tot['v']) ?> от посещенията)<?= $projects ? ', от тях ' . $projects . ' по проект' : '' ?></span></div>
+  <div class="kpi"><b><?= $tot['lead'] ?></b><span>запитвания (<?= $pct($tot['lead'], $tot['v']) ?> от посещенията)<?= $projects ? ', от тях ' . $projects . ' по проект' : '' ?><?= $ideas ? ($projects ? ' и ' : ', от тях ') . $ideas . ' по идея' : '' ?></span></div>
   <div class="kpi"><b><?= $tot['rej'] ?></b><span>отхвърлени запитвания</span></div>
 </div>
 
@@ -115,6 +125,28 @@ admin_header('Статистика', 'stats');
     </table>
     </div>
   </details>
+</section>
+
+<section class="card">
+  <h2>По идея</h2>
+  <?php if (!$ideas): ?>
+    <p class="muted">Няма запитвания „По идея“ за периода.</p>
+  <?php else: ?>
+  <div class="grid2">
+    <div>
+      <h3>По дни</h3>
+      <table class="grid"><thead><tr><th>Ден</th><th>Запитвания</th></tr></thead><tbody>
+        <?php foreach ($ideaDays as $d => $c): ?><tr><td><?= e(date('d.m.Y', strtotime($d))) ?></td><td><b><?= $c ?></b></td></tr><?php endforeach; ?>
+      </tbody></table>
+    </div>
+    <div>
+      <h3>По бюджет</h3>
+      <table class="grid"><thead><tr><th>Бюджет</th><th>Запитвания</th><th>Дял</th></tr></thead><tbody>
+        <?php foreach ($ideaBudgets as $b => $c): ?><tr><td><?= e($b) ?></td><td><b><?= $c ?></b></td><td><?= $pct($c, $ideas) ?></td></tr><?php endforeach; ?>
+      </tbody></table>
+    </div>
+  </div>
+  <?php endif; ?>
 </section>
 
 <div class="grid2">

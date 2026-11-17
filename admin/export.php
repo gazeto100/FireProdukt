@@ -12,7 +12,7 @@ if (isset($statuses[$status])) {
     $where[] = 'i.status = ?';
     $params[] = $status;
 }
-if (in_array($_GET['kind'] ?? '', ['config', 'project'], true)) {
+if (in_array($_GET['kind'] ?? '', ['config', 'project', 'idea'], true)) {
     $where[] = 'i.kind = ?';
     $params[] = $_GET['kind'];
 }
@@ -46,7 +46,8 @@ $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF");
 $head = ['Номер', 'Вид', 'Дата', 'Статус', 'Име', 'Телефон', 'Имейл', 'Населено място', 'Бележка на клиента', 'Модел', 'Размери (см)', 'Размер по избор', 'Ширина (см)', 'Дълбочина (см)', 'Височина (см)', 'Диаметър (см)', 'Материал', 'Крачета',
     'Надпис', 'Знаци', 'Шрифт', 'Височина на буквите (мм)', 'Страни', 'Орнамент', 'Екстри', 'Количество', 'Цена от', 'Цена до', 'Тегло (кг/бр.)', 'Доставка с палет', 'От две части',
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано', 'Обект (проект)', 'Срок (проект)', 'Интересуват ме (проект)', 'Лого'];
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано', 'Обект (проект)', 'Срок (проект)', 'Интересуват ме (проект)', 'Лого',
+    'Какво (идея)', 'Описание (идея)', 'Бюджет (идея)', 'Брой файлове'];
 fwrite($out, implode(';', array_map('csv_cell', $head)) . "\r\n");
 foreach ($rows as $r) {
     $c = json_decode($r['config_json'], true) ?: [];
@@ -55,6 +56,12 @@ foreach ($rows as $r) {
     $round = shape_is_round((string)($m['shape'] ?? ''));
     $dims = $m ? ($round ? 'Ø' . fmt_num($m['w']) . ' × ' . fmt_num($m['h']) : fmt_num($m['w']) . ' × ' . fmt_num($m['d']) . ' × ' . fmt_num($m['h'])) : '';
     $isP = $r['kind'] === 'project';
+    $isI = $r['kind'] === 'idea';
+    if ($isI) {
+        $dd = $c['dims'] ?? [];
+        $m = ['name' => 'По идея', 'w' => $dd['w'] ?? null, 'd' => $dd['d'] ?? null, 'h' => $dd['h'] ?? null];
+        $o = ['material' => ['name' => idea_materials()[$c['material'] ?? ''] ?? '']];
+    }
     if ($isP && !$m) {
         // кратка проектна форма (без конфигурация)
         $m = ['name' => 'Проект'];
@@ -62,7 +69,7 @@ foreach ($rows as $r) {
         $o = ['material' => ['name' => project_materials_short()[$c['material'] ?? ''] ?? '']];
     }
     $line = [
-        $r['public_code'], $isP ? (!empty($c['model']) ? 'Проект (конфигуратор)' : 'Проект') : 'Конфигуратор', date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
+        $r['public_code'], $isI ? 'По идея' : ($isP ? (!empty($c['model']) ? 'Проект (конфигуратор)' : 'Проект') : 'Конфигуратор'), date('d.m.Y H:i', strtotime($r['created_at'])), $statuses[$r['status']] ?? $r['status'],
         $r['name'], $r['phone'], $r['email'], $r['city'], $r['note'],
         !empty($c['custom']) ? ($m['form_name'] ?? $m['name'] ?? '') . ' – по избор' : ($m['name'] ?? ''), $dims, empty($c['model']) ? '' : (!empty($c['custom']) ? 'да' : 'не'),
         empty($c['model']) || $round ? '' : dec($m['w'] ?? null), empty($c['model']) || $round ? '' : dec($m['d'] ?? null), empty($c['model']) ? '' : dec($m['h'] ?? null), empty($c['model']) || !$round ? '' : dec($m['w'] ?? null),
@@ -75,6 +82,8 @@ foreach ($rows as $r) {
         $r['anonymized_at'] ? date('d.m.Y', strtotime($r['anonymized_at'])) : '',
         $isP ? ($c['object'] ?? '') : '', $isP ? (project_deadlines()[$c['deadline'] ?? ''] ?? '') : '',
         $isP ? implode(', ', array_column($c['interests'] ?? [], 'name')) : '', $c['logo'] ?? '',
+        $isI ? (idea_whats()[$c['what'] ?? ''] ?? '') : '', $isI ? ($c['description'] ?? '') : '', $isI ? ($c['budget'] ?? '') : '',
+        $isI ? (count($c['files'] ?? []) ?: (int)($c['files_removed'] ?? 0)) : (int)($r['files'] ?? 0),
     ];
     fwrite($out, implode(';', array_map('csv_cell', $line)) . "\r\n");
 }

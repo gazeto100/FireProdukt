@@ -50,9 +50,12 @@ function start_session(): void
     session_start();
 }
 
-function settings_all(): array
+function settings_all(bool $reset = false): array
 {
     static $cache = null;
+    if ($reset) {
+        $cache = null; // след миграция – новите настройки да се видят още в същата заявка
+    }
     if ($cache === null) {
         $cache = [];
         foreach (db()->query('SELECT k, v FROM settings') as $row) {

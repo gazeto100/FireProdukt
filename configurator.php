@@ -175,6 +175,7 @@ window.FP_CFG = <?= json_encode([
     't' => $_SESSION['form_t'],
     'inquiryUrl' => url('api/inquiry.php'),
     'projectUrl' => url('api/project.php'),
+    'ideaUrl' => url('po-vasha-ideya.php'),
     'maxBytes' => UPLOAD_MAX_BYTES,
     'trackUrl' => url('api/track.php'),
     'tokenUrl' => url('api/token.php'),
