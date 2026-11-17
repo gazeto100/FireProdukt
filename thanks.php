@@ -25,7 +25,11 @@ page_header('Благодарим ви', ['body_class' => 'page-thanks']);
 <main class="page-narrow">
   <div class="thanks-card">
     <h1>Благодарим ви!</h1>
-    <p>Получихме вашето запитване и ще се свържем с вас <strong>до 1 работен ден</strong> с оферта и проект за одобрение.</p>
+    <?php if ($inq && $inq['kind'] === 'project'): ?>
+      <p>Получихме запитването ви по проект. Ще се свържем с вас <strong>до <?= e(contact_deadline()) ?></strong>, за да уточним детайлите. Предложението с цена и проект изпращаме след това. Цената е по оферта.</p>
+    <?php else: ?>
+      <p>Получихме вашето запитване. Ще се свържем с вас <strong>до <?= e(contact_deadline()) ?></strong>, за да потвърдим детайлите и цената.</p>
+    <?php endif; ?>
     <?php if ($inq): ?>
       <p>Номер на запитването: <span class="code"><?= e($inq['public_code']) ?></span></p>
       <?php if ($inq['svg']): ?>

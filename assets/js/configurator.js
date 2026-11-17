@@ -100,27 +100,30 @@
   /* ---------- изчисления ---------- */
   function compute() {
     var m = Object.assign({}, effModel(), { text_place: renderParam('text_place', 'text_place', '') });
-    var lines = G.textLines(state.text, L);
+    // „Надпис и лого“: none | only | text („Само лого“ – без надпис; „Надпис и лого“ – надписът е под логото)
+    var logo = renderParam('logo', 'logo', 'none');
+    var lines = logo === 'only' ? [] : G.textLines(state.text, L);
     var text = lines.join('\n');
     var fontKey = renderParam('font', 'font', 'russo');
     var sides = renderParam('sides', 'sides', 1);
     var pattern = renderParam('ornament', 'pattern', null);
     var walls = G.decoratedWalls(m, sides);
     var minMm = G.minLetterFor(parseFloat(renderParam('material', 'thickness_mm', 2)) || 2, SET);
-    var res = { m: m, text: text, lines: lines, fontKey: fontKey, sides: sides, pattern: pattern, walls: walls, fit: null, error: '', minMm: minMm };
+    var res = { m: m, text: text, lines: lines, fontKey: fontKey, sides: sides, pattern: pattern, walls: walls, fit: null, error: '', minMm: minMm, logo: logo };
+    var logoArg = logo === 'text' ? 'text' : '';
     var hasOrn = !!pattern && pattern !== 'perf'; // перфорацията е около надписа и не заема отделна зона
     if (text) {
       // единственото правило, което спира надписа, е минималната височина на буквата
-      var chk = G.checkText(lines, fontKey, walls, hasOrn, minMm, FONTS, L, m.shape);
+      var chk = G.checkText(lines, fontKey, walls, hasOrn, minMm, FONTS, L, m.shape, logoArg);
       res.fit = chk.fit;
       res.error = chk.error || '';
       res.errorType = chk.kind === 'ok' ? '' : chk.kind;
       res.split = chk.split;
-      if (chk.kind === 'small') res.betterFont = bestFont(m, lines, walls, hasOrn, fontKey);
+      if (chk.kind === 'small') res.betterFont = bestFont(m, lines, walls, hasOrn, fontKey, logoArg);
     }
     res.perfDensity = renderParam('ornament', 'density', 'dense');
     var sel = selected(m);
-    var isDec = !!text || !!pattern;
+    var isDec = !!text || !!pattern || logo !== 'none';
     res.decoratedCount = isDec ? walls.length : 0;
     var fm = formOf(m);
     res.price = m.custom ? G.calcPriceCustom(m, fm.custom, sel, walls.length, isDec, state.qty, SET) : G.calcPrice(m, sel, walls.length, isDec, state.qty);
@@ -136,10 +139,10 @@
   }
 
   /** Шрифтът (от позволените за модела), с който буквите стават най-високи */
-  function bestFont(m, text, walls, hasOrn, current) {
+  function bestFont(m, text, walls, hasOrn, current, logoArg) {
     var best = null, bestMm = -1, curMm = -1;
     (modelOptions(m).font || []).forEach(function (x) {
-      var fit = G.textFit(text, x.opt.render.font, walls, hasOrn, FONTS, L, m.shape);
+      var fit = G.textFit(text, x.opt.render.font, walls, hasOrn, FONTS, L, m.shape, logoArg);
       if (!fit) return;
       if (x.opt.render.font === current) curMm = fit.letter_mm;
       if (fit.letter_mm > bestMm) { bestMm = fit.letter_mm; best = { code: x.opt.code, name: x.opt.name, mm: fit.letter_mm }; }
@@ -156,7 +159,8 @@
     var o = {
       model: r.m, finish: r.finish, legCm: r.legCm, text: r.error && !r.fit ? '' : r.text, fit: r.fit, fontKey: r.fontKey, fonts: FONTS,
       pattern: r.pattern, perfDensity: r.perfDensity, decoratedCount: r.walls.length, extras: ex, layout: L, id: 'pv', title: r.m.name,
-      textPlace: r.m.text_place, plateMm: parseFloat(renderParam('plate', 'plate_mm', 0)) || 0, segments: r.segments
+      textPlace: r.m.text_place, plateMm: parseFloat(renderParam('plate', 'plate_mm', 0)) || 0, segments: r.segments,
+      logo: r.logo && r.logo !== 'none' ? r.logo : ''
     };
     for (var k in extra || {}) o[k] = extra[k];
     return o;
@@ -164,6 +168,10 @@
 
   /* ---------- изграждане на стъпките ---------- */
   var stepsEl = $('#steps'), previewEl = $('#preview'), specsEl = $('#specs');
+  // временно място за полето за лого, докато стъпките се прерисуват
+  var logoHolder = document.createElement('div');
+  logoHolder.hidden = true;
+  document.body.appendChild(logoHolder);
 
   function stepHtml(id, title, body, hint) {
     return '<section class="step" id="' + id + '"><h2><span class="num"></span>' + esc(title) + '</h2>' +
@@ -328,14 +336,21 @@
         return optCard('legs', x.opt.code, state.opts.legs === x.opt.code, x.opt.name, x.opt.hint, 'opt-compact');
       }).join('') + '</div>');
     }
-    // 5. Надпис
-    var body = '<div class="field"><label for="txt">' + (m.project ? 'Име на обекта' : 'Вашият надпис') + ' <span class="muted">(по желание, на един или два реда)</span></label>' +
+    // 5. Надпис (и лого при обикновените модели)
+    var logoMode = mo.logo ? renderParam('logo', 'logo', 'none') : 'none';
+    var body = '';
+    if (mo.logo && mo.logo.length > 1) {
+      body += '<div class="opts opts-3 logo-modes">' + mo.logo.map(function (x) {
+        return optCard('logo', x.opt.code, state.opts.logo === x.opt.code, x.opt.name, '', 'opt-compact');
+      }).join('') + '</div><div id="logoSlot"></div>';
+    }
+    body += '<div class="field"' + (logoMode === 'only' ? ' hidden' : '') + '><label for="txt">' + (m.project ? 'Име на обекта' : 'Вашият надпис') + ' <span class="muted">(по желание, на един или два реда)</span></label>' +
       '<textarea id="txt" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="' + (m.project ? 'напр. ХОТЕЛ ЕЛЕНА' : 'напр. СЕМЕЙСТВО ИВАНОВИ') + '">' + esc(state.text) + '</textarea>' +
       '<p class="txt-status" id="txtStatus" role="status" aria-live="polite"></p>' +
       '<div class="txt-actions"><button type="button" class="btn btn-sm btn-ghost" id="splitBtn" hidden>Раздели на два реда</button>' +
       '<button type="button" class="btn btn-sm btn-ghost" id="narrowBtn" hidden>Пробвай с по-тесния шрифт</button></div>' +
       (m.project ? '<p class="step-hint txt-logo-note">Ако имате лого, прикачете го в последната стъпка. В прегледа се показва името, а логото се поставя във финалния проект.</p>' : '') + '</div>';
-    if (mo.font) {
+    if (mo.font && logoMode !== 'only') {
       body += '<p class="sub">Шрифт</p><div class="opts opts-3 fonts">' + mo.font.map(function (x) {
         return '<label class="opt opt-font"><input type="radio" name="font" value="' + esc(x.opt.code) + '"' + (state.opts.font === x.opt.code ? ' checked' : '') +
           '><span class="opt-in"><span class="font-sample" style="font-family:\'fp-' + esc(x.opt.render.font) + '\'">Огън</span><small>' + esc(x.opt.name) + '</small></span></label>';
@@ -352,7 +367,7 @@
         return optCard('sides', x.opt.code, state.opts.sides === x.opt.code, label, '', 'opt-compact');
       }).join('') + '</div><p class="step-hint">' + esc(groupsByCode.sides.hint || '') + '</p>';
     }
-    html += stepHtml('st-text', 'Надпис', body, 'Надписът се побира автоматично. Нов ред – с Enter.');
+    html += stepHtml('st-text', 'Надпис', body, logoMode === 'only' ? '' : 'Надписът се побира автоматично. Нов ред – с Enter.' + (logoMode === 'text' ? ' Логото е отгоре, надписът – под него.' : ''));
     // 6. Орнамент
     if (mo.ornament && mo.ornament.length > 1) {
       html += stepHtml('st-ornament', groupsByCode.ornament.name, '<div class="opts opts-orn">' + mo.ornament.map(function (x) {
@@ -375,7 +390,14 @@
       html += stepHtml('st-extras', groupsByCode.extras.name, ebody, groupsByCode.extras.hint);
     }
 
+    var lb = $('#logoBlock');
+    if (lb && lb.parentNode !== logoHolder) logoHolder.appendChild(lb);
     stepsEl.innerHTML = html;
+    var slot = $('#logoSlot');
+    if (lb) {
+      lb.hidden = !slot || logoMode === 'none';
+      if (slot) slot.parentNode.replaceChild(lb, slot);
+    }
     $('#st-send').hidden = !!m.project;
     $('#st-project').hidden = !m.project;
     numberSteps();
@@ -526,7 +548,7 @@
     }
     // екстри, чието изискване вече не е изпълнено (напр. термометър без капак)
     dropUnmet().forEach(function (n) { notes.push('„' + n + '“ е махнат – изисква опция, която вече не е избрана.'); });
-    if ((CAT.rules || []).length && (name === 'extras' || name === 'legs')) {
+    if (name === 'logo' || ((CAT.rules || []).length && (name === 'extras' || name === 'legs'))) {
       build();
     } else {
       update();
@@ -689,6 +711,33 @@
     if (input) { input.classList.toggle('invalid', !!msg); input.setAttribute('aria-invalid', msg ? 'true' : 'false'); }
   }
 
+  /* ---------- лого (обикновени модели) ---------- */
+  var cLogo = $('#c-logo'), cRights = $('#c-logo-rights');
+  function logoErr(id, msg) { var el = $('#' + id); if (el) { el.textContent = msg || ''; el.hidden = !msg; } }
+  function checkLogoFile() {
+    var fl = cLogo.files && cLogo.files[0], info = $('#cLogoInfo');
+    info.textContent = '';
+    if (!fl) return 'Прикачете логото.';
+    var ext = (fl.name.split('.').pop() || '').toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'svg', 'pdf'].indexOf(ext) < 0) return 'Позволени са само PNG, JPG, SVG и PDF.';
+    if (fl.size > CFG.maxBytes) return 'Файлът е ' + (fl.size / 1048576).toFixed(1).replace('.', ',') + ' MB. Максимумът е 5 MB.';
+    info.textContent = fl.name + ' · ' + (fl.size >= 1048576 ? (fl.size / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(fl.size / 1024)) + ' KB');
+    return '';
+  }
+  cLogo.addEventListener('change', function () { logoErr('cLogoErr', cLogo.files && cLogo.files[0] ? checkLogoFile() : ''); });
+  cRights.addEventListener('change', function () { if (cRights.checked) logoErr('cRightsErr', ''); });
+  /** {} или грешки за логото, когато е избрано „Само лого“ / „Надпис и лого“ */
+  function validateLogo() {
+    var e = {};
+    if (renderParam('logo', 'logo', 'none') === 'none') return e;
+    var fe = checkLogoFile();
+    if (fe) e.logo = fe;
+    if (!cRights.checked) e.logo_rights = 'Потвърдете, че имате право да използвате логото.';
+    logoErr('cLogoErr', e.logo);
+    logoErr('cRightsErr', e.logo_rights);
+    return e;
+  }
+
   function validateForm() {
     var errs = {}, v = function (n) { return (form.elements[n].value || '').trim(); };
     if (v('name').length < 2) errs.name = 'Въведете име.';
@@ -727,17 +776,22 @@
    * и изпраща същото запитване още веднъж – клиентът не вижда грешка и не губи нищо.
    */
   function sendInquiry(payload, retried) {
-    return postJson(CFG.inquiryUrl, payload).then(function (data) {
-      if (data && data.code === 'csrf' && !retried) {
-        return postJson(CFG.tokenUrl, {}).then(function (t) {
-          if (!t || !t.csrf) return data;
-          CFG.csrf = t.csrf;
-          payload.csrf = t.csrf;
-          return sendInquiry(payload, true);
-        });
-      }
-      return data;
-    });
+    var fd = new FormData();
+    fd.set('payload', JSON.stringify(payload));
+    if (payload.config.options.logo && renderParam('logo', 'logo', 'none') !== 'none' && cLogo.files && cLogo.files[0]) fd.set('logo', cLogo.files[0]);
+    return fetch(CFG.inquiryUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (res) { return res.json().catch(function () { return { ok: false, message: 'Сървърът върна неочакван отговор.' }; }); })
+      .then(function (data) {
+        if (data && data.code === 'csrf' && !retried) {
+          return postJson(CFG.tokenUrl, {}).then(function (t) {
+            if (!t || !t.csrf) return data;
+            CFG.csrf = t.csrf;
+            payload.csrf = t.csrf;
+            return sendInquiry(payload, true);
+          });
+        }
+        return data;
+      });
   }
 
   /* попълнените полета се пазят в браузъра (без отметката за съгласие – тя се дава наново) */
@@ -763,8 +817,8 @@
     e.preventDefault();
     if (sending) return;
     var r = compute();
-    var errs = validateForm();
-    if (r.error) {
+    var errs = validateForm(), lerrs = validateLogo();
+    if (r.error || Object.keys(lerrs).length) {
       scrollToStep($('#st-text'));
       return;
     }
@@ -798,7 +852,8 @@
           city: form.elements.city.value, note: form.elements.note.value, consent: form.elements.consent.checked
         },
         svg: svg,
-        src: src()
+        src: src(),
+        logo_rights: cRights.checked
       };
       return sendInquiry(payload, false);
     }).then(function (data) {
@@ -815,6 +870,8 @@
       if (errsS.text) {
         var te = $('#txtStatus'); te.textContent = errsS.text; te.className = 'txt-status bad';
       }
+      if (errsS.logo) logoErr('cLogoErr', errsS.logo);
+      if (errsS.logo_rights) logoErr('cRightsErr', errsS.logo_rights);
       msg.textContent = (data && data.message) || 'Запитването не беше изпратено. Проверете полетата и опитайте отново.';
       msg.hidden = false;
     }).catch(function () {

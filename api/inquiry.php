@@ -6,8 +6,21 @@ start_session();
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     json_out(['ok' => false, 'message' => 'Методът не е позволен.'], 405);
 }
-$raw = file_get_contents('php://input', false, null, 0, 600000);
-$in = json_decode((string)$raw, true);
+// Ако заявката надхвърля post_max_size (голямо лого), PHP изпразва $_POST и $_FILES – казваме го ясно
+$postMax = (static function (string $v): int {
+    $n = (int)$v;
+    $u = strtolower(substr(trim($v), -1));
+    return $u === 'g' ? $n << 30 : ($u === 'm' ? $n << 20 : ($u === 'k' ? $n << 10 : $n));
+})((string)ini_get('post_max_size'));
+if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) {
+    json_out(['ok' => false, 'errors' => ['logo' => 'Файлът е твърде голям. Максимумът е 5 MB.'], 'message' => 'Файлът е твърде голям. Максимумът е 5 MB.'], 413);
+}
+// multipart (поле payload = JSON + файл logo) или стар формат – само JSON в тялото
+if (isset($_POST['payload'])) {
+    $in = json_decode(mb_substr((string)$_POST['payload'], 0, 600000), true);
+} else {
+    $in = json_decode((string)file_get_contents('php://input', false, null, 0, 600000), true);
+}
 if (!is_array($in)) {
     json_out(['ok' => false, 'message' => 'Невалидна заявка.'], 400);
 }
@@ -63,11 +76,29 @@ foreach ($v['errors'] as $k => $msg) {
 if (!empty($v['model']['project'])) {
     $errors['model'] = 'Тази форма се поръчва с проектната форма.';
 }
+// лого (обикновени модели): файлът – със същите проверки като при проектите; потвърждение за правата – задължително
+$logoMode = $v['config']['logo_mode'] ?? 'none';
+$logo = ['ok' => true, 'none' => true];
+if ($logoMode !== 'none') {
+    $logo = upload_check($_FILES['logo'] ?? null);
+    if (!$logo['ok']) {
+        $errors['logo'] = $logo['error'];
+    } elseif (!empty($logo['none'])) {
+        $errors['logo'] = 'Прикачете логото.';
+    }
+    if (empty($in['logo_rights'])) {
+        $errors['logo_rights'] = 'Потвърдете, че имате право да използвате логото.';
+    }
+}
 if ($errors) {
     $first = reset($errors);
     json_out(['ok' => false, 'errors' => $errors, 'message' => $first], 422);
 }
 $config = $v['config'];
+if ($logoMode !== 'none' && empty($logo['none'])) {
+    $config['logo'] = $logo['name'] . ' (' . strtoupper($logo['ext']) . ', ' . fmt_bytes($logo['size']) . ')';
+    $config['logo_rights'] = true;
+}
 $price = $v['price'];
 $configJson = json_encode($config, JSON_UNESCAPED_UNICODE);
 
@@ -89,6 +120,17 @@ foreach (db_all('SELECT public_code, phone, config_json FROM inquiries WHERE cre
 
 $svg = svg_sanitize((string)($in['svg'] ?? ''));
 
+// логото се мести извън публичната папка, преди да се запише запитването
+$stored = null;
+if ($logoMode !== 'none' && empty($logo['none'])) {
+    $stored = upload_store($logo);
+    if ($stored === null) {
+        db()->query("SELECT RELEASE_LOCK(" . db()->quote('fp_inq_' . $phoneKey) . ")");
+        error_log('upload: cannot store in ' . upload_dir());
+        json_out(['ok' => false, 'errors' => ['logo' => 'Логото не можа да се запише. Опитайте отново или изберете „Само надпис“ – ще го поискаме по имейл.'], 'message' => 'Логото не можа да се запише.'], 500);
+    }
+}
+
 // Източник на посещението
 $src = is_array($in['src'] ?? null) ? $in['src'] : [];
 $s = fn($k, $len = 190) => isset($src[$k]) && is_string($src[$k]) && $src[$k] !== '' ? mb_substr($src[$k], 0, $len) : null;
@@ -106,6 +148,10 @@ $st->execute([
     $s('referrer', 500), $s('landing', 500), $ipHash, mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
 ]);
 $id = (int)db()->lastInsertId();
+if ($stored) {
+    db()->prepare('INSERT INTO uploads (inquiry_id, stored_name, original_name, mime, ext, size) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([$id, $stored, $logo['name'], upload_types()[$logo['ext']]['mime'], $logo['ext'], $logo['size']]);
+}
 db()->query("SELECT RELEASE_LOCK(" . db()->quote('fp_inq_' . $phoneKey) . ")");
 record_event('lead', $v['model']['id']);
 
@@ -128,19 +174,21 @@ if (function_exists('fastcgi_finish_request')) {
 
 // Имейли (неуспехите се записват в mail_log и се виждат в админа)
 try {
+    $logoAtt = $stored && ($pth = upload_path($stored)) ? ['name' => 'logo-' . $code . '.' . $logo['ext'], 'type' => 'application/octet-stream', 'data' => (string)file_get_contents($pth)] : null;
     send_inquiry_mails($id, $code, $config, $cat, $price, compact('name', 'phone', 'email', 'city', 'note'), $svg, [
         'utm_source' => $s('utm_source'), 'utm_medium' => $s('utm_medium'), 'utm_campaign' => $s('utm_campaign'),
         'referrer' => $s('referrer', 500),
-    ]);
+    ], $logoAtt);
 } catch (Throwable $e) {
     mail_log($id, '-', 'Грешка при подготовка на имейлите', 'none', false, $e->getMessage());
 }
 exit;
 
 
-function send_inquiry_mails(int $id, string $code, array $config, array $cat, array $price, array $ct, ?string $svg, array $src): void
+/** До администратора – с прегледа и логото (прикачени); до клиента – само името на файла с логото (в редовете) */
+function send_inquiry_mails(int $id, string $code, array $config, array $cat, array $price, array $ct, ?string $svg, array $src, ?array $logoAtt = null): void
 {
-    $site = setting('site_name', 'FireProdukt');
+    $site = site_name();
     $lines = config_lines($config, $cat);
     // цената към клиента – само ако е включена в Настройки и никога при вид „по проект“ (той не минава оттук, но за всеки случай)
     $showPrices = setting('show_prices', '0') === '1' && empty($config['project']);
@@ -170,14 +218,15 @@ function send_inquiry_mails(int $id, string $code, array $config, array $cat, ar
         $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222"><h2 style="margin:0 0 12px">Ново запитване ' . e($code) . '</h2>'
             . '<table style="border-collapse:collapse">' . $rows . '</table>'
             . '<p style="margin-top:16px"><a href="' . e(abs_url('admin/inquiry.php?id=' . $id)) . '">Отвори в админ панела</a></p>'
-            . '<p style="color:#888;font-size:13px">Прегледът е прикачен като preview.svg.</p></div>';
+            . '<p style="color:#888;font-size:13px">Прегледът е прикачен като preview.svg' . ($logoAtt ? ', логото – като ' . e($logoAtt['name']) : '') . '.</p></div>';
         $att = $svg ? [['name' => 'preview-' . $code . '.svg', 'type' => 'image/svg+xml', 'data' => $svg]] : [];
+        if ($logoAtt) $att[] = $logoAtt;
         send_mail($notify, "Ново запитване $code – " . (!empty($config['custom']) ? ($config['model']['form_name'] ?? $config['model']['name']) . ' – размер по избор' : $config['model']['name']) . " ({$ct['name']})", $t, $html, $att, $id);
     }
 
     // Потвърждение до клиента
     if ($ct['email'] !== '') {
-        $t = "Здравейте, {$ct['name']}!\n\nПолучихме вашето запитване $code. Ще се свържем с вас до 1 работен ден с оферта и проект за одобрение.\n\n";
+        $t = "Здравейте, {$ct['name']}!\n\nПолучихме вашето запитване $code. Ще се свържем с вас до " . contact_deadline() . ", за да потвърдим детайлите и цената.\n\n";
         foreach ($lines as $k => $v) {
             $t .= "$k: $v\n";
         }
@@ -193,7 +242,7 @@ function send_inquiry_mails(int $id, string $code, array $config, array $cat, ar
             $rows .= '<tr><td style="padding:6px 10px;color:#666">Ориентировъчна цена</td><td style="padding:6px 10px"><b>' . e($priceTxt) . '</b></td></tr>';
         }
         $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:560px">'
-            . '<p>Здравейте, ' . e($ct['name']) . '!</p><p>Получихме вашето запитване <b>' . e($code) . '</b>. Ще се свържем с вас до 1 работен ден с оферта и проект за одобрение.</p>'
+            . '<p>Здравейте, ' . e($ct['name']) . '!</p><p>Получихме вашето запитване <b>' . e($code) . '</b>. Ще се свържем с вас до ' . e(contact_deadline()) . ', за да потвърдим детайлите и цената.</p>'
             . '<table style="border-collapse:collapse;width:100%">' . $rows . '</table>'
             . '<p style="color:#666;font-size:13px">Изгледът в конфигуратора е ориентировъчен. Преди изработка ще получите финален проект за одобрение.</p>'
             . '<p>Поздрави,<br>' . e($site) . '</p></div>';

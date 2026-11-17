@@ -38,7 +38,7 @@ function project_deadlines(): array
  */
 function project_mails(array $d, array $config, array $cat): array
 {
-    $site = setting('site_name', 'FireProdukt');
+    $site = site_name();
     $lines = config_lines($config, $cat);
     $contact = ['Лице за контакт' => $d['name'], 'Телефон' => $d['phone'], 'Имейл' => $d['email'] ?: '—', 'Населено място' => $d['city'] ?: '—', 'Бележка' => $d['note'] ?: '—'];
     $admUrl = abs_url('admin/inquiry.php?id=' . $d['id']);
@@ -62,7 +62,7 @@ function project_mails(array $d, array $config, array $cat): array
     }
     if ($d['email'] !== '') {
         // без цена: при проект цената е по оферта, независимо от show_prices
-        $t = "Здравейте, {$d['name']}!\n\nПолучихме запитването ви по проект ({$d['code']}). Ще се свържем с вас до 1 работен ден с предложение и проект. Цената е по оферта.\n\n";
+        $t = "Здравейте, {$d['name']}!\n\nПолучихме запитването ви по проект ({$d['code']}). Ще се свържем с вас до " . contact_deadline() . ", за да уточним детайлите. Предложението с цена и проект изпращаме след това. Цената е по оферта.\n\n";
         foreach ($lines as $k => $v) $t .= "$k: $v\n";
         $t .= "\nПоздрави,\n$site\n";
         $rows = '';
@@ -70,7 +70,7 @@ function project_mails(array $d, array $config, array $cat): array
             $rows .= '<tr><td style="padding:6px 10px;color:#666;border-bottom:1px solid #eee">' . e($k) . '</td><td style="padding:6px 10px;border-bottom:1px solid #eee">' . e($v) . '</td></tr>';
         }
         $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:560px"><p>Здравейте, ' . e($d['name']) . '!</p>'
-            . '<p>Получихме запитването ви по проект <b>' . e($d['code']) . '</b>. Ще се свържем с вас до 1 работен ден с предложение и проект. Цената е по оферта.</p>'
+            . '<p>Получихме запитването ви по проект (<b>' . e($d['code']) . '</b>). Ще се свържем с вас до ' . e(contact_deadline()) . ', за да уточним детайлите. Предложението с цена и проект изпращаме след това. Цената е по оферта.</p>'
             . '<table style="border-collapse:collapse;width:100%">' . $rows . '</table><p>Поздрави,<br>' . e($site) . '</p></div>';
         $out['client'] = ['to' => $d['email'], 'subject' => "Получихме запитването ви {$d['code']}", 'text' => $t, 'html' => $html];
     }

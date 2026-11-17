@@ -68,6 +68,20 @@ function setting(string $key, $default = '')
     return array_key_exists($key, $all) && $all[$key] !== null ? $all[$key] : $default;
 }
 
+/** Името на сайта – навсякъде от настройката (заглавия, горна лента, футър, подпис и подател на имейлите) */
+function site_name(): string
+{
+    $n = trim((string)setting('site_name', ''));
+    return $n !== '' ? $n : 'FireProdukt';
+}
+
+/** Срок, до който се свързваме с клиента (текст от настройките), напр. „2 работни дни“ */
+function contact_deadline(): string
+{
+    $d = trim((string)setting('contact_deadline', ''));
+    return $d !== '' ? $d : '2 работни дни';
+}
+
 function save_setting(string $key, string $value): void
 {
     $st = db()->prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)');

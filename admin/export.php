@@ -46,7 +46,7 @@ $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF");
 $head = ['Номер', 'Вид', 'Дата', 'Статус', 'Име', 'Телефон', 'Имейл', 'Населено място', 'Бележка на клиента', 'Модел', 'Размери (см)', 'Размер по избор', 'Ширина (см)', 'Дълбочина (см)', 'Височина (см)', 'Диаметър (см)', 'Материал', 'Крачета',
     'Надпис', 'Знаци', 'Шрифт', 'Височина на буквите (мм)', 'Страни', 'Орнамент', 'Екстри', 'Количество', 'Цена от', 'Цена до', 'Тегло (кг/бр.)', 'Доставка с палет', 'От две части',
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано', 'Обект (проект)', 'Срок (проект)', 'Интересуват ме (проект)', 'Лого (проект)'];
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'Referrer', 'Бележки (админ)', 'Анонимизирано', 'Обект (проект)', 'Срок (проект)', 'Интересуват ме (проект)', 'Лого'];
 fwrite($out, implode(';', array_map('csv_cell', $head)) . "\r\n");
 foreach ($rows as $r) {
     $c = json_decode($r['config_json'], true) ?: [];
@@ -74,7 +74,7 @@ foreach ($rows as $r) {
         $r['utm_source'], $r['utm_medium'], $r['utm_campaign'], $r['utm_term'], $r['utm_content'], $r['referrer'], $r['notes'],
         $r['anonymized_at'] ? date('d.m.Y', strtotime($r['anonymized_at'])) : '',
         $isP ? ($c['object'] ?? '') : '', $isP ? (project_deadlines()[$c['deadline'] ?? ''] ?? '') : '',
-        $isP ? implode(', ', array_column($c['interests'] ?? [], 'name')) : '', $isP ? ($c['logo'] ?? '') : '',
+        $isP ? implode(', ', array_column($c['interests'] ?? [], 'name')) : '', $c['logo'] ?? '',
     ];
     fwrite($out, implode(';', array_map('csv_cell', $line)) . "\r\n");
 }

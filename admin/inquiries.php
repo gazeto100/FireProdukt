@@ -76,6 +76,7 @@ admin_header('Запитвания', 'inquiries');
       <?php if (!empty($cfg['custom'])): ?><span class="badge badge-custom">Размер по избор: <?= e(shape_is_round((string)($cfg['model']['shape'] ?? '')) ? 'Ø' . fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['h']) : fmt_num($cfg['model']['w']) . ' × ' . fmt_num($cfg['model']['d']) . ' × ' . fmt_num($cfg['model']['h'])) ?> см</span><?php endif; ?>
       <?php if (!empty($cfg['pallet'])): ?><span class="badge badge-flag">палет</span><?php endif; ?>
       <?php if (!empty($cfg['two_parts'])): ?><span class="badge badge-flag">2 части</span><?php endif; ?>
+      <?php if (!$isProj && $r['files']): ?><span class="badge badge-logo">лого</span><?php endif; ?>
       <span class="badge st-<?= e($r['status']) ?>"><?= e($statuses[$r['status']] ?? $r['status']) ?></span>
       <b><?= $r['name'] !== '' ? e($r['name']) : '<span class="muted">(изтрити лични данни)</span>' ?></b><?= $r['phone'] !== '' ? ' · ' . e($r['phone']) : '' ?><?= $r['city'] ? ' · ' . e($r['city']) : '' ?>
     </div>

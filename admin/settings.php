@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($to === '') {
             flash('Първо въведете имейл за известия.', 'err');
         } else {
-            $ok = send_mail($to, 'Тестов имейл от ' . setting('site_name', 'сайта'), "Ако четете това, изпращането на имейли работи.\n\n" . date('d.m.Y H:i:s'));
+            $ok = send_mail($to, 'Тестов имейл от ' . site_name(), "Ако четете това, изпращането на имейли работи.\n\n" . date('d.m.Y H:i:s'));
             $last = db_all('SELECT transport, ok, error FROM mail_log WHERE inquiry_id IS NULL ORDER BY id DESC LIMIT 2');
             $detail = implode(' | ', array_map(fn($r) => strtoupper($r['transport']) . ': ' . ($r['ok'] ? 'успех' : ($r['error'] ?? 'грешка')), array_reverse($last)));
             flash(($ok ? 'Тестовият имейл е изпратен до ' . $to . '. ' : 'Тестовият имейл НЕ е изпратен. ') . $detail, $ok ? 'ok' : 'err');
@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $vals = [
         'site_name' => $in('site_name') ?: 'FireProdukt',
         'notify_email' => $in('notify_email'),
+        'contact_deadline' => $in('contact_deadline') ?: '2 работни дни',
         'contact_phone' => $in('contact_phone'),
         'currency' => $in('currency') ?: '€',
         'show_prices' => isset($_POST['show_prices']) ? '1' : '0',
@@ -37,7 +38,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'pallet_kg' => str_replace(',', '.', $in('pallet_kg')),
         'custom_surcharge_pct' => str_replace(',', '.', $in('custom_surcharge_pct')),
         'mail_from' => $in('mail_from'),
-        'mail_from_name' => $in('mail_from_name'),
         'smtp_host' => $in('smtp_host'),
         'smtp_port' => $in('smtp_port') ?: '587',
         'smtp_secure' => in_array($in('smtp_secure'), ['tls', 'ssl', 'none'], true) ? $in('smtp_secure') : 'tls',
@@ -95,6 +95,7 @@ admin_header('Настройки', 'settings');
     <h2>Общи</h2>
     <label>Име на сайта<input name="site_name" value="<?= $v('site_name') ?>"></label>
     <label>Имейл за известия за нови запитвания<input name="notify_email" type="email" value="<?= $v('notify_email') ?>"></label>
+    <label>Срок за обратна връзка (след „Ще се свържем с вас до …“ – в имейла до клиента и на страницата след изпращане)<input name="contact_deadline" maxlength="60" value="<?= e(contact_deadline()) ?>" placeholder="2 работни дни"></label>
     <label>Телефон за контакт (показва се във футъра)<input name="contact_phone" value="<?= $v('contact_phone') ?>"></label>
   </section>
 
@@ -144,7 +145,6 @@ admin_header('Настройки', 'settings');
       <input name="smtp_pass" type="password" autocomplete="new-password"></label>
     <?php if (($s['smtp_pass'] ?? '') !== ''): ?><label class="check"><input type="checkbox" name="smtp_pass_clear" value="1"> Изтрий запазената парола</label><?php endif; ?>
     <label>От (From) – имейл<input name="mail_from" type="email" value="<?= $v('mail_from') ?>" placeholder="поръчки@вашдомейн.bg"></label>
-    <label>От (From) – име<input name="mail_from_name" value="<?= $v('mail_from_name') ?>"></label>
   </section>
 
   <section class="card">

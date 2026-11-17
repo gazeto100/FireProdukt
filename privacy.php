@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/inc/bootstrap.php';
-$site = setting('site_name', 'FireProdukt');
+$site = site_name();
 $trackingOn = setting('meta_pixel_id', '') !== '' || setting('ga4_id', '') !== '';
 page_header('Поверителност', ['body_class' => 'page-legal']);
 ?>

@@ -98,14 +98,24 @@
   }
 
   /** Вертикална зона за надписа с поле от ръба */
-  function textBand(wallH, hasOrn, L, shape) {
+  function textBand(wallH, hasOrn, L, shape, logo) {
     var b = (L.shape_bands && L.shape_bands[shape]) || (hasOrn ? L.band_orn_text : L.band_plain);
     var top = Math.max(b[0] * wallH, L.edge_mm), bottom = Math.min(b[1] * wallH, wallH - L.edge_mm);
+    // „Надпис и лого“: надписът е под логото – в долната част на зоната
+    if (logo === 'text') top = top + (bottom - top) * L.logo_share;
     return [top, Math.max(top + 1, bottom)];
+  }
+  /** Рамката „Вашето лого“ в стена W × wallH: горната част от зоната („Надпис и лого“) или цялата зона („Само лого“) */
+  function logoBox(W, wallH, hasOrn, L, shape, logo) {
+    if (logo !== 'only' && logo !== 'text') return null;
+    var full = textBand(wallH, hasOrn, L, shape, ''), y0 = full[0], y1 = full[1];
+    if (logo === 'text') y1 = y0 + (full[1] - full[0]) * (L.logo_share - L.logo_gap);
+    var h = Math.max(10, y1 - y0), w = Math.min(W - 2 * L.edge_mm, h * 2.4);
+    return { x: (W - w) / 2, y: y0, w: w, h: h };
   }
 
   /** Побира 1–2 реда в най-тясната декорирана стена (същото като text_fit() в PHP) */
-  function textFit(lines, fontKey, walls, hasOrn, fonts, L, shape) {
+  function textFit(lines, fontKey, walls, hasOrn, fonts, L, shape, logo) {
     var font = fonts.fonts[fontKey];
     if (typeof lines === 'string') lines = textLines(lines, L);
     if (!lines.length || !font || !walls.length) return null;
@@ -125,7 +135,7 @@
     }
     var upm = font.upm, n = lines.length;
     var availW = minW - 2 * L.edge_mm;
-    var band = textBand(wallH, hasOrn, L, shape);
+    var band = textBand(wallH, hasOrn, L, shape, logo);
     var lineH = Math.max(1, yMax - yMin), gap = L.line_gap * font.cap;
     var totalH = n * lineH + (n - 1) * gap;
     var size = Math.min(availW / (Math.max.apply(null, adv) / upm), (band[1] - band[0]) / (totalH / upm));
@@ -150,13 +160,13 @@
    * Единственото правило, което спира надписа: минималната височина (плюс технически таван и позволени знаци).
    * Връща { error, kind: 'ok'|'small'|'chars'|'long', fit, split }
    */
-  function checkText(lines, fontKey, walls, hasOrn, minMm, fonts, L, shape) {
+  function checkText(lines, fontKey, walls, hasOrn, minMm, fonts, L, shape, logo) {
     var text = lines.join('\n');
     if (textLength(text) > L.max_chars) return { kind: 'long', error: 'Надписът е твърде дълъг – до ' + L.max_chars + ' знака.', fit: null, split: null };
     var bad = [];
     chars(text.replace(/\n/g, '')).forEach(function (ch) { if (fonts.allowed.indexOf(ch) < 0 && bad.indexOf(ch) < 0) bad.push(ch); });
     if (bad.length) return { kind: 'chars', error: 'Тези знаци не могат да се изрежат: ' + bad.join(' '), fit: null, split: null };
-    var fit = textFit(lines, fontKey, walls, hasOrn, fonts, L, shape);
+    var fit = textFit(lines, fontKey, walls, hasOrn, fonts, L, shape, logo);
     if (!fit) return { kind: 'chars', error: 'Надписът не може да бъде разположен.', fit: null, split: null };
     if (fit.letter_mm + 0.05 >= minMm) return { kind: 'ok', error: null, fit: fit, split: null };
     var split = lines.length === 1 ? splitTwoLines(lines[0]) : null;
@@ -339,6 +349,7 @@
     ROUND_SHAPES: ROUND_SHAPES,
     PROP: PROP,
     crossParts: crossParts,
+    logoBox: logoBox,
     objParts: objParts,
     benchSegments: benchSegments,
     isRound: isRound,

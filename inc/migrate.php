@@ -6,7 +6,7 @@ declare(strict_types=1);
  * и settings.schema_version = SCHEMA_VERSION. При качване на нова версия на кода върху стара база
  * липсващите промени се прилагат автоматично при първата заявка.
  */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 function run_migrations(): void
 {
@@ -76,6 +76,11 @@ function run_migrations(): void
             // за хотели и обекти: формите от шоурума стават конфигурируеми, вид „по проект“ (цена по оферта)
             require_once __DIR__ . '/migrate_v10.php';
             migrate_v10();
+        }
+        if ($v < 11) {
+            // лого и при обикновените модели: група „Надпис и лого“ (само надпис / само лого / надпис и лого)
+            require_once __DIR__ . '/migrate_v11.php';
+            migrate_v11();
         }
         save_setting('schema_version', (string)SCHEMA_VERSION);
     } catch (Throwable $e) {

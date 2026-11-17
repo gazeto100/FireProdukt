@@ -34,10 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cfg['text_removed'] = true;
         }
         if (($cfg['kind'] ?? '') === 'project') {
-            // обектът и името на файла също се махат; остават брой, материал, срок и интерес за статистиката
+            // обектът също се маха; остават брой, материал, срок и интерес за статистиката
             if (($cfg['object'] ?? '') !== '') { $cfg['object'] = ''; $cfg['object_removed'] = true; }
-            if (($cfg['logo'] ?? '') !== '') { $cfg['logo'] = '(изтрито)'; }
         }
+        if (($cfg['logo'] ?? '') !== '') { $cfg['logo'] = '(изтрито)'; }
         db()->beginTransaction();
         db()->prepare("UPDATE inquiries SET name = '', phone = '', email = NULL, city = NULL, note = NULL, svg = NULL, ip_hash = NULL,
             user_agent = NULL, referrer = NULL, landing_url = NULL, config_json = ?, anonymized_at = NOW() WHERE id = ?")
@@ -106,10 +106,27 @@ admin_header('Запитване ' . $inq['public_code'], 'inquiries');
         </div>
       <?php endforeach; ?>
       <?php if (!$files): ?><p class="muted small">Без качено лого.</p><?php endif; ?>
-    <?php elseif ($inq['svg']): ?>
-      <div class="preview"><img src="svg.php?id=<?= (int)$id ?>" alt="Преглед"></div>
     <?php else: ?>
-      <p class="muted">Няма запазен преглед.</p>
+      <?php if ($inq['svg']): ?>
+        <div class="preview"><img src="svg.php?id=<?= (int)$id ?>" alt="Преглед"></div>
+      <?php else: ?>
+        <p class="muted">Няма запазен преглед.</p>
+      <?php endif; ?>
+      <?php // лого при обикновено запитване (стъпка „Надпис“ – „Само лого“ / „Надпис и лого“)
+      foreach ($files as $fl): ?>
+        <div class="logo-box">
+          <?php if (in_array($fl['ext'], ['png', 'jpg'], true)): ?>
+            <div class="logo-prev"><img src="upload.php?id=<?= (int)$fl['id'] ?>&amp;inline=1" alt="Лого"></div>
+          <?php else: ?>
+            <div class="logo-prev logo-file"><?= e(strtoupper($fl['ext'])) ?></div>
+          <?php endif; ?>
+          <div>
+            <b><?= e($fl['original_name']) ?></b><br><span class="muted small"><?= e(strtoupper($fl['ext'])) ?> · <?= e(fmt_bytes((int)$fl['size'])) ?><?= !empty($cfg['logo_rights']) ? ' · клиентът потвърди правата' : '' ?></span><br>
+            <a class="a-btn a-btn-ghost" href="upload.php?id=<?= (int)$fl['id'] ?>">⇩ Свали логото</a>
+            <?php if ($fl['ext'] === 'svg'): ?><p class="muted small">SVG файловете се свалят и не се отварят в браузъра (сигурност). Отворете го в Illustrator/Inkscape.</p><?php endif; ?>
+          </div>
+        </div>
+      <?php endforeach; ?>
     <?php endif; ?>
     <table class="kv">
       <?php foreach ($lines as $k => $v): ?>

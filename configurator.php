@@ -26,6 +26,22 @@ page_header('Сглоби своя модел', ['body_class' => 'page-config', 
 
     <div id="steps"></div>
 
+    <?php /* поле за лого (обикновени модели): стои извън стъпките, за да не се губи избраният файл при прерисуване;
+             конфигураторът го премества в стъпка „Надпис“, когато е избрано „Само лого“ или „Надпис и лого“ */ ?>
+    <div id="logoBlock" class="logo-block" hidden>
+      <div class="field">
+        <label for="c-logo">Лого <span class="req">*</span> <span class="muted">(PNG, JPG, SVG или PDF до 5 MB)</span></label>
+        <input id="c-logo" name="logo" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf,image/png,image/jpeg,image/svg+xml,application/pdf">
+        <p class="small muted" id="cLogoInfo"></p>
+        <p class="err" id="cLogoErr" hidden></p>
+      </div>
+      <div class="field check">
+        <label><input type="checkbox" id="c-logo-rights" value="1"> <span>Потвърждавам, че имам право да използвам това лого. <span class="req">*</span></span></label>
+        <p class="err" id="cRightsErr" hidden></p>
+      </div>
+      <p class="step-hint">Ще получите проект с логото за одобрение преди изработка. Много дребни детайли може да бъдат опростени.</p>
+    </div>
+
     <section class="step step-send" id="st-send">
       <h2><span class="num"></span>Количество и запитване</h2>
       <form id="inqForm" novalidate>
@@ -73,7 +89,7 @@ page_header('Сглоби своя модел', ['body_class' => 'page-config', 
         <p class="err" id="textBlock" hidden>Поправете надписа по-горе, за да изпратите запитването.</p>
         <button type="submit" class="btn btn-block btn-lg" id="sendBtn">Изпрати запитване</button>
         <p class="err form-msg" id="formMsg" role="alert" hidden></p>
-        <p class="small muted">Без плащане и без задължение. Ще ви се обадим до 1 работен ден с оферта и проект.</p>
+        <p class="small muted">Без плащане и без задължение. Ще се свържем с вас до <?= e(contact_deadline()) ?>, за да потвърдим детайлите и цената.</p>
       </form>
     </section>
 
@@ -141,7 +157,7 @@ page_header('Сглоби своя модел', ['body_class' => 'page-config', 
         <p class="err" id="textBlockP" hidden>Поправете надписа по-горе, за да изпратите запитването.</p>
         <button type="submit" class="btn btn-block btn-lg" id="projBtn">Изпрати запитване по проект</button>
         <p class="err form-msg" id="projMsg" role="alert" hidden></p>
-        <p class="small muted">Без плащане и без задължение. Ще ви се обадим до 1 работен ден с предложение и проект.</p>
+        <p class="small muted">Без плащане и без задължение. Ще се свържем с вас до <?= e(contact_deadline()) ?>, за да уточним детайлите. Предложението с цена и проект изпращаме след това.</p>
       </form>
     </section>
   </div>

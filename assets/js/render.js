@@ -165,7 +165,7 @@
         var cxp = offX + i * sp + (j % 2 ? sp / 2 : 0), cyp = offY + j * sp * 0.87;
         var r = r0 * sizes[(i * 7 + j * 13) % 3];
         if (cxp - r < x0 || cxp + r > x0 + w || cyp - r < y0 || cyp + r > y0 + h) continue;
-        if (excl && cxp + r > excl.x0 && cxp - r < excl.x1 && cyp + r > excl.y0 && cyp - r < excl.y1) continue;
+        if (excl && excl.some(function (e) { return cxp + r > e.x0 && cxp - r < e.x1 && cyp + r > e.y0 && cyp - r < e.y1; })) continue;
         d += 'M' + f(cxp - r) + ',' + f(cyp) + 'a' + f(r) + ',' + f(r) + ' 0 1,0 ' + f(2 * r) + ',0a' + f(r) + ',' + f(r) + ' 0 1,0 ' + f(-2 * r) + ',0Z';
       }
     }
@@ -173,15 +173,23 @@
   }
 
   function wallDecor(W, H, o, showText) {
-    var L = o.layout, holes = '', bridges = '', edge = L.edge_mm || 25;
+    var L = o.layout, holes = '', bridges = '', overlay = '', edge = L.edge_mm || 25;
+    // рамка „Вашето лого“ на мястото на логото (горе при „Надпис и лого“, цялата зона при „Само лого“)
+    var shape = o.model ? o.model.shape : 'box', lb = o.logo && global.FPGeo ? global.FPGeo.logoBox(W, H, !!o.pattern && o.pattern !== 'perf', L, shape, o.logo) : null;
+    if (lb && showText) {
+      var fsz = Math.max(14, Math.min(lb.h * 0.26, lb.w * 0.13));
+      overlay = '<rect x="' + f(lb.x) + '" y="' + f(lb.y) + '" width="' + f(lb.w) + '" height="' + f(lb.h) + '" rx="' + f(Math.min(12, lb.h * 0.08)) + '" fill="#ff8a2a" fill-opacity=".14" stroke="#ff9a3c" stroke-width="' + f(Math.max(3, lb.h * 0.025)) + '" stroke-dasharray="' + f(lb.h * 0.08) + ' ' + f(lb.h * 0.05) + '"/>' +
+        '<text x="' + f(lb.x + lb.w / 2) + '" y="' + f(lb.y + lb.h / 2 + fsz * 0.35) + '" text-anchor="middle" font-family="system-ui, Segoe UI, Arial, sans-serif" font-weight="700" font-size="' + f(fsz) + '" fill="#ffb067">Вашето лого</text>';
+    }
     if (o.pattern === 'perf') {
-      // зоната на надписа (дори когато надписът не се рисува на скосена стена – физически го има)
-      var excl = null, ft = o.fit;
+      // зоната на надписа (дори когато надписът не се рисува на скосена стена – физически го има) и на логото
+      var excl = [], ft = o.fit;
       if (o.text && ft && ft.lines) {
         var tot = ft.lines.length * ft.line_h + (ft.lines.length - 1) * ft.gap, t0 = (ft.band[0] + ft.band[1]) / 2 - tot / 2;
         var mw = Math.max.apply(null, ft.widths_mm), clr = Math.max(14, ft.cap_mm * 0.35);
-        excl = { x0: (W - mw) / 2 - clr, x1: (W + mw) / 2 + clr, y0: t0 - clr, y1: t0 + tot + clr };
+        excl.push({ x0: (W - mw) / 2 - clr, x1: (W + mw) / 2 + clr, y0: t0 - clr, y1: t0 + tot + clr });
       }
+      if (lb) excl.push({ x0: lb.x - 14, x1: lb.x + lb.w + 14, y0: lb.y - 14, y1: lb.y + lb.h + 14 });
       // при постамента перфорацията е само над отвора за дърва
       var perfH = o.model && o.model.shape === 'pedestal' ? H * 0.52 - edge : H - 2 * edge;
       holes += '<path d="' + perfPath(edge, edge, W - 2 * edge, perfH, o.perfDensity, excl) + '"/>';
@@ -212,12 +220,12 @@
         });
       });
     }
-    return { holes: holes, bridges: bridges };
+    return { holes: holes, bridges: bridges, overlay: overlay };
   }
 
   /** shapePts: по желание – контур на стената в локални координати (напр. трапец); иначе правоъгълник W×H */
   function wallMarkup(id, W, H, transform, fill, o, decorate, pal, showText, shapePts) {
-    var dec = decorate ? wallDecor(W, H, o, showText !== false) : { holes: '', bridges: '' };
+    var dec = decorate ? wallDecor(W, H, o, showText !== false) : { holes: '', bridges: '', overlay: '' };
     var body = function (attrs) {
       return shapePts ? '<polygon points="' + pts(shapePts) + '" ' + attrs + '/>' : '<rect width="' + f(W) + '" height="' + f(H) + '" ' + attrs + '/>';
     };
@@ -236,6 +244,7 @@
       // светлина, която "прелива" около отворите
       s += '<g fill="#ff8a2a" opacity="' + (o.lid ? 0.3 : 0.42) + '" filter="url(#' + o.id + 'halo)">' + dec.holes + '</g>';
     }
+    if (dec.overlay) s += dec.overlay;
     s += body('fill="none" stroke="' + pal.edge + '" stroke-width="2"');
     return s + '</g>';
   }
@@ -600,7 +609,7 @@
     var chevLevels = shape === 'cheverme' ? [top + 260, top + 390, top + 520, top + 650] : null;
     // скарите показват 4 шиша (или избрания комплект), освен ако има скара отгоре
     var nSkew = !isGrill || ex.grate ? 0 : (typeof ex.skewers === 'number' ? ex.skewers : (shape === 'cheverme' ? 0 : 4));
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     var fireH = isGrill ? Math.min(140, H * 0.9) : Math.min(spanX, spanZ) * 0.72;
     var armH = spanX * 0.95;
     var round = m.shape === 'hex' || m.shape === 'octagon';
@@ -1019,7 +1028,7 @@
   function renderPlancha(o) {
     var m = o.model, pal = PALETTE[o.finish] || PALETTE.black, id = o.id, ex = o.extras || {}, sq = m.shape === 'plancha_sq';
     var D = m.w * 10, Ht = m.h * 10, Rp = D / 2, Rh = PL.hole * D / 2, hb = PL.base * D / 2, t = Math.max(14, (o.plateMm || 6) * 2);
-    var yb = Ht - t, defs = roundDefs(id, pal, hb), s = '', decorate = !!(o.text && o.fit) || !!o.pattern;
+    var yb = Ht - t, defs = roundDefs(id, pal, hb), s = '', decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     defs += '<linearGradient id="' + id + 'plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#55565b"/><stop offset=".45" stop-color="#36373b"/><stop offset="1" stop-color="#1f2023"/></linearGradient>';
     defs += '<clipPath id="' + id + 'hole"><polygon points="' + pts(circ(0, 0, Rh, Ht, 0, 2 * Math.PI, 48)) + '"/></clipPath>';
     var ext = sq ? Rp * (1 + KX) : Rp * Math.sqrt(1 + KX * KX);
@@ -1105,7 +1114,7 @@
     }
     // предна наклонена стена (с надпис): локални координати u = 0..W+2t, v = 0..H
     var tr = 'matrix(1,0,' + (t * KX / H).toFixed(4) + ',' + (1 - t * KY / H).toFixed(4) + ',' + f(-t - t * KX) + ',' + f(-top + t * KY) + ')';
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     s += wallMarkup(id + 'm0', W + 2 * t, H, tr, 'url(#' + id + 'front)', o, decorate, pal, true, [[0, 0], [W + 2 * t, 0], [W + t, H], [t, H]]);
     // дясна наклонена стена
     s += '<polygon points="' + pts([P(W + t, top, -t), P(W + t, top, W + t), P(W, Lg, W), P(W, Lg, 0)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
@@ -1131,7 +1140,7 @@
     var defs = roundDefs(id, pal, R), s = '';
     s += '<ellipse cx="' + f(P(0, 0, 0)[0]) + '" cy="8" rx="' + f(W * 0.8) + '" ry="' + f(hw * KY * 2 + 40) + '" fill="url(#' + id + 'shadow)"/>';
     // стени: предна (с надпис над отвора) и дясна
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     s += wallMarkup(id + 'm0', W, H, 'matrix(1,0,0,1,' + f(-hw - hw * KX) + ',' + f(-H + hw * KY) + ')', 'url(#' + id + 'front)', o, decorate, pal, true);
     s += wallMarkup(id + 'm1', W, H, 'matrix(' + KX.toFixed(4) + ',' + (-KY).toFixed(4) + ',0,1,' + f(hw - hw * KX) + ',' + f(-H + hw * KY) + ')', 'url(#' + id + 'side)', o, false, pal, false);
     // отвор за дърва с цепеници (в долната част на предната стена)
@@ -1202,7 +1211,7 @@
       s += poly([P(-gs, gy, -gs), P(gs, gy, -gs), P(gs, gy, gs), P(-gs, gy, gs)], 'fill="none" stroke="#aeb4ba" stroke-width="7"');
     }
     // предна наклонена стена на тавата (с надписа): локални u = 0..W (горе), v = 0..Ht; дъното е по-тясно с t от всяка страна
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     var tr = 'matrix(1,0,' + (t * KX / Ht).toFixed(4) + ',' + (1 - t * KY / Ht).toFixed(4) + ',' + f(-a - a * KX) + ',' + f(-H + a * KY) + ')';
     s += wallMarkup(id + 'm0', W, Ht, tr, 'url(#' + id + 'front)', o, decorate, pal, true, [[0, 0], [W, 0], [W - t, Ht], [t, Ht]]);
     // дясна наклонена стена и ръбове
@@ -1222,7 +1231,7 @@
     s += '<ellipse cx="0" cy="8" rx="' + f(R * 0.95) + '" ry="' + f(R * KY + 40) + '" fill="url(#' + id + 'shadow)"/>';
     // пръстен (цилиндър) с плосък участък отпред за надписа
     s += cylSide(rr, 0, Hr, 'fill="url(#' + id + 'body)"');
-    var cw = 2 * rr * 0.62, decorate = !!(o.text && o.fit) || !!o.pattern;
+    var cw = 2 * rr * 0.62, decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     if (decorate) {
       // плосък участък с надписа: същият градиент като цилиндъра (изместен с cw/2) и изрязан по контура на пръстена
       var flat = Object.assign({}, pal, { edge: 'none', brush: false });
@@ -1280,7 +1289,7 @@
     // купа (до пояса) и вертикален пояс по ръба
     s += bowlBody(id, R, Hp, yc - Hp, 0.3);
     s += cylSide(R, yc, H, 'fill="url(#' + id + 'body)"');
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     if (decorate) s += chordWall(o, id, pal, dr, R, yc, H, R);
     s += poly(circ(0, 0, R, yc, FRONT[0], FRONT[1]), 'fill="none" stroke="' + pal.rim + '" stroke-opacity=".6" stroke-width="3"');
     // отвор: огън, капак или искрогасител
@@ -1311,7 +1320,7 @@
     // огнище в центъра: с надпис / перфорация или с декоративни прорези
     var dr2 = { d: '' };
     s += cylSide(Rp, 0, Hpit, 'fill="url(#' + id + 'body)"');
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var decorate = !!(o.text && o.fit) || !!o.pattern || !!o.logo;
     if (decorate) {
       s += chordWall(o, id, pal, dr2, Rp, 0, Hpit, Ro);
     } else {

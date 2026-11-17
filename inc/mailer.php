@@ -15,7 +15,7 @@ function send_mail(string $to, string $subject, string $text, ?string $html = nu
     if ($from === '') {
         $from = filter_var($s['smtp_user'] ?? '', FILTER_VALIDATE_EMAIL) ? $s['smtp_user'] : 'noreply@' . preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
     }
-    $fromName = (string)($s['mail_from_name'] ?? ($s['site_name'] ?? ''));
+    $fromName = site_name(); // подателят е името на сайта (едно име навсякъде)
 
     $msg = mail_build($from, $fromName, $to, $subject, $text, $html, $attachments);
 
@@ -81,7 +81,7 @@ function mail_build(string $from, string $fromName, string $to, string $subject,
         'MIME-Version: 1.0',
         'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . $host . '>',
         'Date: ' . date('r'),
-        'X-Mailer: FireProdukt',
+        'X-Mailer: PHP',
     ];
 
     $alt = 'alt_' . bin2hex(random_bytes(8));

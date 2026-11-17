@@ -55,13 +55,13 @@ function admin_header(string $title, string $active = ''): void
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title><?= e($title) ?> – Админ</title>
+<title><?= e($title) ?> – <?= e(site_name()) ?> админ</title>
 <link rel="stylesheet" href="<?= e(asset('css/admin.css')) ?>">
 </head>
 <body>
 <?php if (admin_id()): ?>
 <header class="a-head">
-  <a class="a-brand" href="<?= e(url('admin/inquiries.php')) ?>"><?= e(setting('site_name', 'FireProdukt')) ?> · админ</a>
+  <a class="a-brand" href="<?= e(url('admin/inquiries.php')) ?>"><?= e(site_name()) ?> · админ</a>
   <nav>
     <?php foreach ($nav as $k => $n): ?>
       <a href="<?= e(url('admin/' . $n[0])) ?>" class="<?= $active === $k ? 'on' : '' ?>"><?= e($n[1]) ?></a>

@@ -99,8 +99,10 @@ function validate_config(array $in, array $cat): array
         $chosen[$code] = ['code' => $v, 'name' => $avail[$v]['opt']['name']];
     }
 
+    // Надпис и лого: „Само лого“ – без надпис; „Надпис и лого“ – надписът е под логото (по-малка площ)
+    $logoMode = isset($chosen['logo']['code']) ? (string)($byGroup['logo'][$chosen['logo']['code']]['opt']['render']['logo'] ?? 'none') : 'none';
     // Надпис
-    $text = normalize_text((string)($in['text'] ?? ''));
+    $text = $logoMode === 'only' ? '' : normalize_text((string)($in['text'] ?? ''));
     $fontKey = isset($chosen['font']['code']) ? (string)($byGroup['font'][$chosen['font']['code']]['opt']['render']['font'] ?? 'russo') : 'russo';
     $sidesVal = isset($chosen['sides']['code']) ? ($byGroup['sides'][$chosen['sides']['code']]['opt']['render']['sides'] ?? 1) : 1;
     $pattern = isset($chosen['ornament']['code']) ? ($byGroup['ornament'][$chosen['ornament']['code']]['opt']['render']['pattern'] ?? null) : null;
@@ -113,7 +115,7 @@ function validate_config(array $in, array $cat): array
     $minMm = min_letter_for_thickness($thickness);
     if ($text !== '') {
         // перфорацията е около надписа и не заема отделна зона
-        $chk = text_check(text_lines($text), $fontKey, $walls, $pattern !== null && $pattern !== 'perf', $minMm, $model['shape']);
+        $chk = text_check(text_lines($text), $fontKey, $walls, $pattern !== null && $pattern !== 'perf', $minMm, $model['shape'], $logoMode === 'text' ? 'text' : '');
         $fit = $chk['fit'];
         if ($chk['error'] !== null) {
             $errors['text'] = $chk['error'];
@@ -145,7 +147,7 @@ function validate_config(array $in, array $cat): array
         }
     }
 
-    $isDecorated = $text !== '' || $pattern !== null;
+    $isDecorated = $text !== '' || $pattern !== null || $logoMode !== 'none';
     $price = $custom
         ? calc_price_custom($model, $form, $sel, count($walls), $isDecorated, (int)$qty)
         : calc_price($model, $sel, count($walls), $isDecorated, (int)$qty);
@@ -184,6 +186,8 @@ function validate_config(array $in, array $cat): array
         'two_parts_part' => $sheet['part'],
         // огнище с пейка-пръстен: пейката е от сегменти; седалката е от дърво (не влиза в теглото)
         'segments' => bench_segments($model),
+        // лого (обикновени модели): none | only | text; името на файла се добавя от api/inquiry.php
+        'logo_mode' => $logoMode,
     ];
 
     return ['errors' => $errors, 'config' => $config, 'price' => $price, 'weight' => $weight, 'model' => $model];
@@ -194,7 +198,7 @@ function validate_config(array $in, array $cat): array
  * (Плюс технически таван 40 знака и само позволени знаци.) Огледало на checkText() в geometry.js.
  * Връща ['error' => ?string, 'fit' => ?array, 'split' => ?array (предложение за 2 реда)]
  */
-function text_check(array $lines, string $fontKey, array $walls, bool $hasOrnament, float $minMm, string $shape = 'box'): array
+function text_check(array $lines, string $fontKey, array $walls, bool $hasOrnament, float $minMm, string $shape = 'box', string $logo = ''): array
 {
     $text = implode("\n", $lines);
     $len = text_length($text);
@@ -211,7 +215,7 @@ function text_check(array $lines, string $fontKey, array $walls, bool $hasOrname
     if ($bad) {
         return ['error' => 'Тези знаци не могат да се изрежат: ' . implode(' ', array_keys($bad)), 'fit' => null, 'split' => null];
     }
-    $fit = text_fit($lines, $fontKey, $walls, $hasOrnament, $shape);
+    $fit = text_fit($lines, $fontKey, $walls, $hasOrnament, $shape, $logo);
     if (!$fit) {
         return ['error' => 'Надписът не може да бъде разположен.', 'fit' => null, 'split' => null];
     }
@@ -261,8 +265,12 @@ function config_lines(array $cfg, array $cat): array
     } else {
         $lines['Надпис'] = 'без';
     }
+    // логото – отделен ред (името на файла); при проект се добавя по-долу заедно с обекта и срока
+    if (!empty($cfg['logo']) && ($cfg['kind'] ?? '') !== 'project') {
+        $lines['Лого'] = $cfg['logo'];
+    }
     if ($cfg['decorated_walls'] > 0) {
-        $lines['Декорирани страни'] = ($cfg['options']['sides']['name'] ?? '') . ' (' . $cfg['decorated_walls'] . ')';
+        $lines['Декорирани страни'] = ($cfg['options']['sides']['name'] ?? '') ?: (string)$cfg['decorated_walls'];
     }
     if (!empty($cfg['two_parts'])) {
         $lines['Изработка'] = 'от две части – не се побира в листа (' . ($cfg['two_parts_part'] ?? '') . '); цената се уточнява в офертата';

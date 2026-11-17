@@ -357,3 +357,8 @@ h1, h2, h3 { font-family: var(--head); font-weight: 400; line-height: 1.2; margi
 .cfg-quote { font-weight: 700; color: var(--ember); }
 .txt-logo-note { margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; background: #fff4ec; color: #8a3c00; }
 .g-proj .g-btn { align-self: flex-start; margin-top: 10px; }
+
+/* лого при обикновените модели (стъпка „Надпис“) */
+.logo-modes { margin-bottom: 12px; }
+.logo-block { margin: 4px 0 14px; padding: 12px; border-radius: 12px; background: #fff7f0; border: 1px dashed #f0b27a; }
+.logo-block .field { margin-bottom: 10px; }

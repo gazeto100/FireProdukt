@@ -107,7 +107,10 @@ function geometry_layout(): array
         'band_plain' => [0.22, 0.80],     // зона за надпис без орнамент (част от височината, от горния ръб)
         'band_orn_text' => [0.50, 0.88],  // зона за надпис, когато има орнамент
         'band_orn' => [0.10, 0.42],       // зона за орнамента
-        'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
+        'line_gap' => 0.25,
+        // „Надпис и лого“: логото заема горната част от зоната на надписа, надписът – долната (по-малка буква)
+        'logo_share' => 0.5,
+        'logo_gap' => 0.06,               // разстояние между двата реда, част от височината на главна буква
         // форми със собствена зона за надписа: постамент – над отвора за дърва; огнище с плоча – горната част на основата, под плочата
         'shape_bands' => ['pedestal' => [0.08, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50],
             // купа – целият пояс по ръба; колона – горната част (орнаментът е под надписа)
@@ -232,11 +235,15 @@ function decorated_walls(array $m, $sides): array
 }
 
 /** Вертикалната зона за надписа на стена с височина $wallH, с поле от ръба */
-function text_band(float $wallH, bool $hasOrnament, array $L, string $shape = 'box'): array
+function text_band(float $wallH, bool $hasOrnament, array $L, string $shape = 'box', string $logo = ''): array
 {
     $b = $L['shape_bands'][$shape] ?? ($hasOrnament ? $L['band_orn_text'] : $L['band_plain']);
     $top = max($b[0] * $wallH, $L['edge_mm']);
     $bottom = min($b[1] * $wallH, $wallH - $L['edge_mm']);
+    // „Надпис и лого“: надписът е под логото – в долната част на зоната (огледало на textBand() в geometry.js)
+    if ($logo === 'text') {
+        $top = $top + ($bottom - $top) * $L['logo_share'];
+    }
     return [$top, max($top + 1, $bottom)];
 }
 
@@ -245,7 +252,7 @@ function text_band(float $wallH, bool $hasOrnament, array $L, string $shape = 'b
  * Размерът се определя от по-дългия ред и от височината на зоната.
  * Връща размер на шрифта, ширини на редовете, височина на буквата (мм) и т.н.; null при невалиден знак.
  */
-function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament, string $shape = 'box'): ?array
+function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament, string $shape = 'box', string $logo = ''): ?array
 {
     $font = font_metrics()['fonts'][$fontKey] ?? null;
     if (!$lines || !$font || !$walls) {
@@ -276,7 +283,7 @@ function text_fit(array $lines, string $fontKey, array $walls, bool $hasOrnament
     $upm = $font['upm'];
     $n = count($lines);
     $availW = $minW - 2 * $L['edge_mm'];
-    [$bt, $bb] = text_band($wallH, $hasOrnament, $L, $shape);
+    [$bt, $bb] = text_band($wallH, $hasOrnament, $L, $shape, $logo);
     $lineH = max(1, $yMax - $yMin);
     $totalH = $n * $lineH + ($n - 1) * $L['line_gap'] * $font['cap'];
     $size = min($availW / (max($adv) / $upm), ($bb - $bt) / ($totalH / $upm));

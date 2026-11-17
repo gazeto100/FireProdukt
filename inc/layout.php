@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function page_header(string $title, array $o = []): void
 {
-    $site = setting('site_name', 'FireProdukt');
+    $site = site_name();
     $desc = $o['description'] ?? 'Огнища и скари от неръждаема стомана по поръчка, с ваш изрязан надпис. Изработено в България.';
     $bodyClass = $o['body_class'] ?? '';
     ?><!doctype html>
@@ -37,7 +37,7 @@ function page_header(string $title, array $o = []): void
 
 function page_footer(array $o = []): void
 {
-    $site = setting('site_name', 'FireProdukt');
+    $site = site_name();
     $phone = setting('contact_phone', '');
     $pixel = setting('meta_pixel_id', '');
     $ga4 = setting('ga4_id', '');

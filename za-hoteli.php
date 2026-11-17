@@ -65,7 +65,7 @@ page_header('За хотели и къщи за гости', [
 
   <section class="wrap project-form-sec" id="project-form">
     <h2 class="sec-title">Запитване по проект</h2>
-    <p class="sec-sub">Искате нещо извън моделите? Опишете обекта – ще ви се обадим до 1 работен ден и ще подготвим предложение с проект.</p>
+    <p class="sec-sub">Искате нещо извън моделите? Опишете обекта – ще се свържем с вас до <?= e(contact_deadline()) ?>, за да уточним детайлите, и ще подготвим предложение с проект.</p>
     <form id="projForm" class="card-form" novalidate enctype="multipart/form-data">
       <div class="two-col">
         <div class="field">
