@@ -1115,35 +1115,61 @@
     return { viewBox: [vx, vy, sx(hw, hw) + 60 - vx, hw * KY + 60 - vy], defs: defs, body: s };
   }
 
-  /* ---------- Кръстато сглобяемо огнище: две плочи на прорези (център 0,0) ---------- */
+  /* ---------- Огнище на кръстата стойка (център 0,0) ----------
+   * Две плочи на прорез (стойката, по-тясна от тавата) с V-образен профил отгоре; в профила лежи квадратна тава
+   * с наклонени стени (обърната пресечена пирамида). Огънят и дървата са в тавата; надписът е на предната ѝ стена.
+   * Пропорциите са от FPGeo.crossParts (огледало на cross_parts() в PHP). */
   function renderCross(o) {
     var m = o.model, pal = PALETTE[o.finish] || PALETTE.inox, id = o.id, ex = o.extras || {};
-    var W = m.w * 10, H = m.h * 10, hw = W / 2, fh = H * 1.6;
+    var W = m.w * 10, H = m.h * 10, a = W / 2, cp = global.FPGeo.crossParts(W, H);
+    var Ht = cp.Ht, t = cp.t, b = cp.B / 2, ws = cp.Ws / 2, Hb = cp.Hb, yTip = Hb + cp.rise, fireH = W * 0.55;
     var defs = makeDefs(id, pal), s = '';
-    s += '<ellipse cx="0" cy="8" rx="' + f(W * 0.7) + '" ry="' + f(hw * KY + 50) + '" fill="url(#' + id + 'shadow)"/>';
-    // задната половина на напречната плоча (стената x = 0, z = 0..hw)
-    s += '<polygon points="' + pts([P(0, H, 0), P(0, H, hw), P(0, 0, hw), P(0, 0, 0)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
-    // огън в центъра
-    var g = P(0, 70, 0);
-    s += '<ellipse class="fp-glow" cx="' + f(g[0]) + '" cy="' + f(g[1]) + '" rx="' + f(W * 0.3) + '" ry="' + f(W * 0.05) + '" fill="url(#' + id + 'inGlow)"/>';
-    s += flamesMarkup(g[0], g[1] + 10, W * 0.5, fh, id);
-    // предна плоча: дясна половина с надписа (предната половина на напречната плоча закрива лявата), лява – гладка
-    var decorate = !!(o.text && o.fit) || !!o.pattern;
-    s += wallMarkup(id + 'm1', hw, H, 'matrix(1,0,0,1,' + f(-hw) + ',' + f(-H) + ')', 'url(#' + id + 'front)', o, false, pal, false);
-    s += wallMarkup(id + 'm0', hw, H, 'matrix(1,0,0,1,0,' + f(-H) + ')', 'url(#' + id + 'front)', o, decorate, pal, true);
-    // предната половина на напречната плоча (стената x = 0, z = -hw..0)
-    s += '<polygon points="' + pts([P(0, H, -hw), P(0, H, 0), P(0, 0, 0), P(0, 0, -hw)]) + '" fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"/>';
-    s += line(P(0, H, -hw), P(0, H, 0), 'stroke="' + pal.rim + '" stroke-width="4"') + line(P(-hw, H, 0), P(hw, H, 0), 'stroke="' + pal.rim + '" stroke-width="4"');
+    var topPoly = [P(-a, H, -a), P(a, H, -a), P(a, H, a), P(-a, H, a)];
+    defs += '<clipPath id="' + id + 'open"><polygon points="' + pts(topPoly) + '"/></clipPath>';
+    s += '<ellipse cx="0" cy="8" rx="' + f(W * 0.66) + '" ry="' + f(ws * KY + 46) + '" fill="url(#' + id + 'shadow)"/>';
+    var plateAttr = function (fill) { return 'fill="' + fill + '" stroke="' + pal.edge + '" stroke-width="2" stroke-linejoin="round"'; };
+    // стойка: задната половина на напречната плоча (x = 0, z = 0..ws), надлъжната плоча (z = 0), предната половина на напречната
+    s += poly([P(0, 0, 0), P(0, 0, ws), P(0, yTip, ws), P(0, Hb, b), P(0, Hb, 0)], plateAttr('url(#' + id + 'side)'));
+    s += poly([P(-ws, 0, 0), P(ws, 0, 0), P(ws, yTip, 0), P(b, Hb, 0), P(-b, Hb, 0), P(-ws, yTip, 0)], plateAttr('url(#' + id + 'front)'));
+    s += poly([P(0, 0, -ws), P(0, 0, 0), P(0, Hb, 0), P(0, Hb, -b), P(0, yTip, -ws)], plateAttr('url(#' + id + 'side)'));
+    // тава: вътрешност (през отвора – задната и лявата стена), жар, дърва
+    s += '<g clip-path="url(#' + id + 'open)"><polygon points="' + pts(topPoly) + '" fill="' + pal.inLeft + '"/>' +
+      poly([P(-a, H, a), P(a, H, a), P(b, Hb, b), P(-b, Hb, b)], 'fill="url(#' + id + 'inBack)"') +
+      poly([P(-a, H, -a), P(-a, H, a), P(-b, Hb, b), P(-b, Hb, -b)], 'fill="' + pal.inLeft + '"') + '</g>';
+    s += embersMarkup(id, -b, b, -b, b, Hb + 4, id + 'open');
+    // дърва на кръст (два реда), горният ред стърчи малко над ръба; пламъците са между тях
+    var lr = Math.max(24, W * 0.05), Lh = b * 0.82, logs = '';
+    var logAt = function (x0, z0, x1, z1, y) {
+      var p0 = P(x0, y, z0), p1 = P(x1, y, z1), e = P(x0, y, z0)[1] > P(x1, y, z1)[1] ? p0 : p1;
+      return line(p0, p1, 'stroke="#6b4226" stroke-width="' + f(2 * lr) + '" stroke-linecap="round"') +
+        line([p0[0], p0[1] - lr * 0.35], [p1[0], p1[1] - lr * 0.35], 'stroke="#a8743f" stroke-width="' + f(lr * 0.6) + '" stroke-linecap="round" stroke-opacity=".7"') +
+        '<ellipse cx="' + f(e[0]) + '" cy="' + f(e[1]) + '" rx="' + f(lr * 0.85) + '" ry="' + f(lr * 0.95) + '" fill="#b07a45" stroke="#5c3a1e" stroke-width="3"/>' +
+        '<ellipse cx="' + f(e[0]) + '" cy="' + f(e[1]) + '" rx="' + f(lr * 0.4) + '" ry="' + f(lr * 0.45) + '" fill="none" stroke="#8a5a33" stroke-width="2"/>';
+    };
+    var y1 = Math.max(Hb + lr, H - 2.9 * lr), y2 = Math.max(y1 + 1.6 * lr, H - 0.7 * lr);
+    logs += logAt(-Lh, b * 0.5, Lh, b * 0.5, y1) + logAt(-Lh, -b * 0.5, Lh, -b * 0.5, y1);
+    logs += logAt(b * 0.55, Lh, b * 0.55, -Lh, y2) + logAt(-b * 0.55, Lh, -b * 0.55, -Lh, y2);
+    var fc = P(0, H, 0), frontRimY = P(0, H, -a)[1];
+    s += logs + '<g opacity=".9">' + flamesMarkup(fc[0], frontRimY + 30, W * 0.4, fireH + (frontRimY - fc[1]) + 30, id) + '</g>';
     if (ex.grate) {
-      var gs = hw * 0.75, yy = H + 4;
-      s += '<polygon points="' + pts([P(-gs, yy, -gs), P(gs, yy, -gs), P(gs, yy, gs), P(-gs, yy, gs)]) + '" fill="none" stroke="#aeb4ba" stroke-width="7"/>';
-      for (var i = 1; i <= 7; i++) {
-        var z = -gs + 2 * gs * i / 8;
-        s += line(P(-gs, yy, z), P(gs, yy, z), 'stroke="#c9ced3" stroke-width="5" stroke-linecap="round"');
+      var gs = a - 14, gy = H + 3;
+      for (var i = 1; i <= 8; i++) {
+        var z = -gs + 2 * gs * i / 9;
+        s += line(P(-gs, gy, z), P(gs, gy, z), 'stroke="#c9ced3" stroke-width="5" stroke-linecap="round"');
       }
+      s += poly([P(-gs, gy, -gs), P(gs, gy, -gs), P(gs, gy, gs), P(-gs, gy, gs)], 'fill="none" stroke="#aeb4ba" stroke-width="7"');
     }
-    var vx = sx(-hw, 0) - 60, vy = -(Math.max(H, fh + 30)) - hw * KY - 40;
-    return { viewBox: [vx, vy, sx(hw, hw) + 60 - vx, hw * KY + 60 - vy], defs: defs, body: s };
+    // предна наклонена стена на тавата (с надписа): локални u = 0..W (горе), v = 0..Ht; дъното е по-тясно с t от всяка страна
+    var decorate = !!(o.text && o.fit) || !!o.pattern;
+    var tr = 'matrix(1,0,' + (t * KX / Ht).toFixed(4) + ',' + (1 - t * KY / Ht).toFixed(4) + ',' + f(-a - a * KX) + ',' + f(-H + a * KY) + ')';
+    s += wallMarkup(id + 'm0', W, Ht, tr, 'url(#' + id + 'front)', o, decorate, pal, true, [[0, 0], [W, 0], [W - t, Ht], [t, Ht]]);
+    // дясна наклонена стена и ръбове
+    s += poly([P(a, H, -a), P(a, H, a), P(b, Hb, b), P(b, Hb, -b)], 'fill="url(#' + id + 'side)" stroke="' + pal.edge + '" stroke-width="2"');
+    s += '<polyline points="' + pts([P(a, H, a), P(-a, H, a), P(-a, H, -a)]) + '" fill="none" stroke="' + pal.rim + '" stroke-opacity=".55" stroke-width="3"/>';
+    s += '<polyline points="' + pts([P(-a, H, -a), P(a, H, -a), P(a, H, a)]) + '" fill="none" stroke="' + pal.rim + '" stroke-width="5" stroke-linejoin="round"/>';
+    s += line(P(a, H, -a), P(b, Hb, -b), 'stroke="' + pal.rim + '" stroke-opacity=".7" stroke-width="2.5"');
+    var vx = sx(-a, -a) - 60, vy = -(H + fireH) - a * KY - 20;
+    return { viewBox: [vx, vy, sx(a, a) + 60 - vx, ws * KY + 70 - vy], defs: defs, body: s };
   }
 
   /* ---------- Кръгла купа с пръстен (купата от шоурума върху пръстен с надпис) ---------- */

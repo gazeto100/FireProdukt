@@ -10,7 +10,7 @@ const TEXT_MAX_CHARS = 40;   // технически таван срещу зл�
 const TEXT_MAX_LINES = 2;
 
 /** Кръгли форми: размерът е диаметър (Ø) × височина. Огледало на ROUND_SHAPES в geometry.js */
-const ROUND_SHAPES = ['hex', 'octagon', 'cross', 'ringbowl', 'plancha'];
+const ROUND_SHAPES = ['hex', 'octagon', 'ringbowl', 'plancha'];
 
 /**
  * Пропорции на новите форми (етап 4) – огледало в geometry.js и render.js:
@@ -22,6 +22,31 @@ const PLANCHA_HOLE = 0.45;
 const PLANCHA_PANEL_H = 0.85;
 const PLANCHA_CHORD = 0.7;
 const BBQ_LID = 0.6;
+/** Огнище на кръстата стойка: дълбочина на тавата = 0,3 × ширината (най-много 0,6 × общата височина), стойка = 0,8 × ширината */
+const CROSS_TRAY = 0.3;
+const CROSS_STAND = 0.8;
+
+/**
+ * Огнище на кръстата стойка – размери на детайлите в мм. Огледало на crossParts() в geometry.js.
+ * Тавата е обърната пресечена пирамида: горе W × W, дъно B × B, дълбочина Ht, стените са наклонени с t = Ht/2 навътре.
+ * Стойката: две плочи Ws широки на прорез; горният им ръб е изрязан по профила на тавата (V-образен),
+ * дъното на тавата е на височина Hb, а върховете на плочите опират в наклонените стени на височина Hb + rise.
+ */
+function cross_parts(float $W, float $H): array
+{
+    $Ht = min(CROSS_TRAY * $W, 0.6 * $H);
+    $t = $Ht / 2;
+    $B = $W - 2 * $t;
+    $Ws = min(0.92 * $W, max(CROSS_STAND * $W, $B + 0.06 * $W));
+    $over = max(0.0, $Ws / 2 - $B / 2);
+    $rise = $t > 0 ? $over * $Ht / $t : 0.0;
+    $Hb = $H - $Ht;
+    return ['Ht' => $Ht, 't' => $t, 'B' => $B, 'Ws' => $Ws, 'Hb' => $Hb, 'rise' => $rise, 'plateH' => $Hb + $rise,
+        'slant' => sqrt($Ht * $Ht + $t * $t),
+        // площ в мм²: тава (дъно + 4 трапеца) и двете плочи (правоъгълник до дъното + двата върха)
+        'tray_mm2' => $B * $B + 4 * ($W + $B) / 2 * sqrt($Ht * $Ht + $t * $t),
+        'plates_mm2' => 2 * ($Ws * $Hb + $over * $rise)];
+}
 
 function shape_is_round(string $shape): bool
 {
@@ -37,9 +62,8 @@ function geometry_layout(): array
         'band_orn_text' => [0.50, 0.88],  // зона за надпис, когато има орнамент
         'band_orn' => [0.10, 0.42],       // зона за орнамента
         'line_gap' => 0.25,               // разстояние между двата реда, част от височината на главна буква
-        // форми със собствена зона за надписа: постамент – над отвора за дърва; кръстато – горната част на плочата
-        // огнище с плоча – горната част на основата, под плочата
-        'shape_bands' => ['pedestal' => [0.08, 0.46], 'cross' => [0.10, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50]],
+        // форми със собствена зона за надписа: постамент – над отвора за дърва; огнище с плоча – горната част на основата, под плочата
+        'shape_bands' => ['pedestal' => [0.08, 0.46], 'plancha' => [0.10, 0.50], 'plancha_sq' => [0.10, 0.50]],
         'max_chars' => TEXT_MAX_CHARS,
         'max_lines' => TEXT_MAX_LINES,
     ];
@@ -108,8 +132,9 @@ function model_walls(array $m): array
             // ширината е диаметърът през ъглите; страната е D·sin(22,5°)
             return array_fill(0, 8, [$m['w'] * 10 * sin(M_PI / 8), $h]);
         case 'cross':
-            // надписът е на едната половина на предната плоча (до прореза)
-            return [[$m['w'] * 10 / 2, $h]];
+            // надписът е на предната наклонена стена на тавата – като при трапецовидното огнище: най-тясната (долна) ширина × дълбочината
+            $cp = cross_parts($m['w'] * 10, $h);
+            return array_fill(0, 4, [$cp['B'], $cp['Ht']]);
         case 'ringbowl':
             // пръстенът под купата: Ø = 0,72·Ø купа, височина = 0,55·общата; надписът е в предната му част
             return [[$m['w'] * 10 * 0.72 * 0.62, $h * 0.55]];
@@ -263,7 +288,9 @@ function sheet_area_m2(array $m): float
             $r = 0.45 * $w;
             return (4 * $w * $h + $w * $d + M_PI * $r * $r * 1.25) / 10000;
         case 'cross':
-            return 2 * $w * $h / 10000;
+            // тава + две плочи на стойката
+            $cp = cross_parts($w * 10, $h * 10);
+            return ($cp['tray_mm2'] + $cp['plates_mm2']) / 1000000;
         case 'ringbowl':
             $r = $w / 2;
             return (M_PI * $r * $r * 1.3 + M_PI * 0.72 * $w * 0.55 * $h) / 10000;
@@ -377,7 +404,11 @@ function sheet_fit(array $m, string $construction = 'panels'): array
             $parts[] = [$w, $w, 'дъно на купата Ø' . $mm($w) . ' мм'];
             break;
         case 'cross':
-            $parts[] = [$w, $h, 'плоча ' . $mm($w) . '×' . $mm($h) . ' мм'];
+            // тава от 4 трапецовидни панела и дъно + две плочи на стойката
+            $cp = cross_parts($w, $h);
+            $parts[] = [$w, $cp['slant'], 'стена на тавата ' . $mm($w) . '×' . $mm($cp['slant']) . ' мм'];
+            $parts[] = [$cp['B'], $cp['B'], 'дъно на тавата ' . $mm($cp['B']) . '×' . $mm($cp['B']) . ' мм'];
+            $parts[] = [$cp['Ws'], $cp['plateH'], 'плоча на стойката ' . $mm($cp['Ws']) . '×' . $mm($cp['plateH']) . ' мм'];
             break;
         case 'plancha':
             // кръгла основа – валцувана, по обиколката; плочата – кръг Ø
