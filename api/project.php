@@ -60,8 +60,9 @@ if ($configured) {
     if ($v['config'] && empty($v['model']['project'])) {
         $errors['model'] = 'Тази форма се поръчва с обикновеното запитване.';
     }
-    if ($email === '') $errors['email'] = 'Въведете имейл.';
 }
+// имейлът е задължителен при всяко проектно запитване (кратката форма и проектната стъпка на конфигуратора)
+if ($email === '') $errors['email'] = 'Въведете имейл.';
 if (mb_strlen($object) < 2) $errors['object'] = 'Напишете кой е обектът.';
 if ($qty === false) $errors['quantity'] = 'Брой между 1 и 500.';
 if (!$configured && !isset(project_materials()[$material])) $errors['material'] = 'Изберете материал.';
@@ -172,43 +173,23 @@ if (function_exists('fastcgi_finish_request')) {
     flush();
 }
 
-// Имейли
+// Имейли: до администратора – с ориентировъчната цена; до клиента – никога с цена (вид „по проект“ = цена по оферта)
 try {
-    $site = setting('site_name', 'FireProdukt');
-    $lines = config_lines($config, $cat);
-    $contact = ['Лице за контакт' => $name, 'Телефон' => $phone, 'Имейл' => $email ?: '—', 'Населено място' => $city ?: '—', 'Бележка' => $note ?: '—'];
-    $notify = setting('notify_email', '');
-    if ($notify !== '') {
-        $t = "Ново запитване по ПРОЕКТ $code\n\n";
-        foreach (array_merge($contact, $lines) as $k => $v) $t .= "$k: $v\n";
-        if ($pMin !== null) $t .= "\nОриентировъчна цена: " . price_range_text((float)$pMin, (float)$pMax) . " (не се показва на клиента)\n";
-        $t .= "\nИзточник: " . ($s('utm_source') ?: '—') . ' / ' . ($s('utm_medium') ?: '—') . ' / ' . ($s('utm_campaign') ?: '—') . "\n";
-        $t .= "\nДетайли: " . abs_url('admin/inquiry.php?id=' . $id) . "\n";
-        $rows = '';
-        foreach (array_merge($contact, $lines) as $k => $v) {
-            $rows .= '<tr><td style="padding:6px 10px;color:#666;border-bottom:1px solid #eee">' . e($k) . '</td><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>' . nl2br(e($v)) . '</b></td></tr>';
-        }
-        $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222"><h2 style="margin:0 0 12px">Запитване по проект ' . e($code) . '</h2>'
-            . '<table style="border-collapse:collapse">' . $rows . '</table><p><a href="' . e(abs_url('admin/inquiry.php?id=' . $id)) . '">Отвори в админ панела</a></p></div>';
+    $mails = project_mails([
+        'id' => $id, 'code' => $code, 'name' => $name, 'phone' => $phone, 'email' => $email, 'city' => $city, 'note' => $note,
+        'object' => $object, 'price_min' => $pMin, 'price_max' => $pMax,
+        'utm_source' => $s('utm_source'), 'utm_medium' => $s('utm_medium'), 'utm_campaign' => $s('utm_campaign'),
+    ], $config, $cat);
+    if ($mails['admin']) {
         $att = [];
         if ($svg) $att[] = ['name' => 'preview-' . $code . '.svg', 'type' => 'image/svg+xml', 'data' => $svg];
         if ($stored && ($pth = upload_path($stored))) {
             $att[] = ['name' => 'logo-' . $code . '.' . $logo['ext'], 'type' => 'application/octet-stream', 'data' => (string)file_get_contents($pth)];
         }
-        send_mail($notify, "Запитване по проект $code – $object ($name)", $t, $html, $att, $id);
+        send_mail($mails['admin']['to'], $mails['admin']['subject'], $mails['admin']['text'], $mails['admin']['html'], $att, $id);
     }
-    if ($email !== '') {
-        $t = "Здравейте, $name!\n\nПолучихме запитването ви по проект ($code). Ще се свържем с вас до 1 работен ден.\n\n";
-        foreach ($lines as $k => $v) $t .= "$k: $v\n";
-        $t .= "\nПоздрави,\n$site\n";
-        $rows = '';
-        foreach ($lines as $k => $v) {
-            $rows .= '<tr><td style="padding:6px 10px;color:#666;border-bottom:1px solid #eee">' . e($k) . '</td><td style="padding:6px 10px;border-bottom:1px solid #eee">' . e($v) . '</td></tr>';
-        }
-        $html = '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:560px"><p>Здравейте, ' . e($name) . '!</p>'
-            . '<p>Получихме запитването ви по проект <b>' . e($code) . '</b>. Ще се свържем с вас до 1 работен ден.</p>'
-            . '<table style="border-collapse:collapse;width:100%">' . $rows . '</table><p>Поздрави,<br>' . e($site) . '</p></div>';
-        send_mail($email, "Получихме запитването ви $code", $t, $html, [], $id);
+    if ($mails['client']) {
+        send_mail($mails['client']['to'], $mails['client']['subject'], $mails['client']['text'], $mails['client']['html'], [], $id);
     }
 } catch (Throwable $e) {
     mail_log($id, '-', 'Грешка при подготовка на имейлите', 'none', false, $e->getMessage());

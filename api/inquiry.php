@@ -142,7 +142,8 @@ function send_inquiry_mails(int $id, string $code, array $config, array $cat, ar
 {
     $site = setting('site_name', 'FireProdukt');
     $lines = config_lines($config, $cat);
-    $showPrices = setting('show_prices', '0') === '1';
+    // цената към клиента – само ако е включена в Настройки и никога при вид „по проект“ (той не минава оттук, но за всеки случай)
+    $showPrices = setting('show_prices', '0') === '1' && empty($config['project']);
     $priceTxt = price_range_text((float)$price['min'], (float)$price['max']);
 
     // До администратора
@@ -154,7 +155,7 @@ function send_inquiry_mails(int $id, string $code, array $config, array $cat, ar
         foreach ($lines as $k => $v) {
             $t .= "$k: $v\n";
         }
-        $t .= "\nОриентировъчна цена: $priceTxt" . ($showPrices ? '' : ' (не се показва на клиента)') . "\n";
+        $t .= "\nОриентировъчна цена: $priceTxt" . ($showPrices ? '' : ' (не се показва на клиента)') . "\n"; // до администратора – винаги
         $t .= "\nИзточник: " . ($src['utm_source'] ?: '—') . ' / ' . ($src['utm_medium'] ?: '—') . ' / ' . ($src['utm_campaign'] ?: '—');
         $t .= "\nReferrer: " . ($src['referrer'] ?: '—') . "\n";
         $t .= "\nДетайли: " . abs_url('admin/inquiry.php?id=' . $id) . "\n";

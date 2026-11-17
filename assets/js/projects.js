@@ -68,7 +68,8 @@
     var digits = v('phone').replace(/\D/g, '');
     if (!v('phone')) e.phone = 'Въведете телефон.';
     else if (!/^[\d\s+()\-\/]+$/.test(v('phone')) || digits.length < 8 || digits.length > 15) e.phone = 'Проверете телефона – напр. 0888 123 456.';
-    if (v('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('email'))) e.email = 'Невалиден имейл.';
+    if (!v('email')) e.email = 'Въведете имейл.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('email'))) e.email = 'Невалиден имейл.';
     if (!form.elements.consent.checked) e.consent = 'Нужно е съгласие, за да се свържем с вас.';
     ['object', 'quantity', 'contact_name', 'phone', 'email', 'consent'].forEach(function (n) { fieldError(n, e[n]); });
     var le = checkLogo();

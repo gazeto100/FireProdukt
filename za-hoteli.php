@@ -136,8 +136,8 @@ page_header('За хотели и къщи за гости', [
         </div>
       </div>
       <div class="field">
-        <label for="p-email">Имейл</label>
-        <input id="p-email" name="email" type="email" inputmode="email" maxlength="190" autocomplete="email">
+        <label for="p-email">Имейл <span class="req">*</span></label>
+        <input id="p-email" name="email" type="email" inputmode="email" maxlength="190" autocomplete="email" required>
         <p class="err" data-err="email" hidden></p>
       </div>
       <div class="hp" aria-hidden="true">
